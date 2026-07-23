@@ -52,4 +52,4 @@ jobs:
       - name: Scan for unreviewed secrets
         run: |
           detect-secrets scan --baseline .secrets.baseline
-          git diff --exit-code .secrets.baseline
+          git diff --exit-code --ignore-matching-lines='"generated_at":' .secrets.baseline
