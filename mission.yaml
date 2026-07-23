@@ -1,0 +1,34 @@
+schema_version: 1
+
+mission:
+  id: bootstrap-autonomous-system
+  objective: >
+    Build and start the minimum local orchestration system required to generate,
+    publish and manage the project's first GitHub feature proposals and issues.
+
+human_constraints:
+  - Do not merge pull requests.
+  - Do not create releases.
+  - Do not push directly to main after bootstrap.
+  - Do not use cloud coding agents.
+  - Do not expose secrets.
+  - Use GitHub as the remote control plane.
+  - Use Codex CLI as the initial agent provider.
+
+first_autonomous_workflow:
+  - Load the canonical project context.
+  - Run the Product Manager agent.
+  - Generate initial epics and feature proposals.
+  - Validate proposal schemas.
+  - Publish proposals as GitHub issues.
+  - Add them to the GitHub Project.
+  - Record token usage and elapsed time.
+  - Set product approval to Pending.
+  - Stop and wait for human approval.
+
+completion_criteria:
+  - The local orchestrator runs successfully.
+  - At least one feature proposal is created by the Product Manager agent.
+  - The issue contains an agent activity and token-usage comment.
+  - The proposal appears in the GitHub Project.
+  - No implementation begins before human approval.

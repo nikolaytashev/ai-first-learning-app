@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+
+# Local orchestrator state and audit logs
+.orchestrator/
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Flutter
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+
+# .NET
+backend/**/bin/
+backend/**/obj/
+
+# Local infrastructure
+infrastructure/local/data/
