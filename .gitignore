@@ -14,11 +14,8 @@ __pycache__/
 .mypy_cache/
 .venv/
 
-# Local orchestrator state and audit logs
+# Local orchestrator state, databases and audit logs
 .orchestrator/
-*.db
-*.sqlite
-*.sqlite3
 
 # Secrets and environment files
 .env

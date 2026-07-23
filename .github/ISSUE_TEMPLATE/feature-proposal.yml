@@ -1,0 +1,89 @@
+name: Feature proposal
+description: Propose an outcome for human product approval.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Product Approval starts as Pending. Implementation requires an allow-listed human `/approve` command.
+
+  - type: input
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem exists, and what evidence supports it?
+      placeholder: Describe the problem without prescribing a solution.
+    validations:
+      required: true
+
+  - type: input
+    id: target-users
+    attributes:
+      label: Target users
+      description: Which approved user group experiences the problem?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome and success measure
+      description: State the change in user outcome and how it would be measured.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: In scope
+      description: List the minimum behaviour included in this proposal.
+    validations:
+      required: true
+
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Out of scope
+      description: List adjacent behaviour that this proposal does not authorize.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Use testable statements and include non-functional requirements.
+      placeholder: |
+        - [ ] AC-1: ...
+        - [ ] AC-2: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decisions required
+      description: List product, privacy, security or architecture questions that still require human input.
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Proposed size
+      description: Size L must be split before implementation.
+      options:
+        - XS
+        - S
+        - M
+        - L
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context references
+      description: List canonical repository paths and related issue numbers.
+    validations:
+      required: true

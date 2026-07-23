@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/handoff.schema.json",
+  "title": "Corrective Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "handoff_id",
+    "workflow_id",
+    "issue_number",
+    "from_role",
+    "to_role",
+    "status",
+    "reason_code",
+    "explanation",
+    "evidence",
+    "acceptance_criteria_results",
+    "required_actions",
+    "attempt",
+    "usage"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issue_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "from_role": {
+      "$ref": "#/$defs/role"
+    },
+    "to_role": {
+      "$ref": "#/$defs/role_or_human"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "blocked",
+        "failed",
+        "needs_input"
+      ]
+    },
+    "reason_code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "explanation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "acceptance_criteria_results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/criterion_result"
+      }
+    },
+    "required_actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "maximum",
+        "retry_allowed"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximum": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retry_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_tokens",
+        "elapsed_ms"
+      ],
+      "properties": {
+        "total_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "role": {
+      "enum": [
+        "product_manager",
+        "business_analysis",
+        "software_architect",
+        "instructional_designer",
+        "implementer",
+        "qa",
+        "reviewer"
+      ]
+    },
+    "role_or_human": {
+      "enum": [
+        "product_manager",
+        "business_analysis",
+        "software_architect",
+        "instructional_designer",
+        "implementer",
+        "qa",
+        "reviewer",
+        "orchestrator_operator",
+        "human_owner"
+      ]
+    },
+    "criterion_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "criterion_id",
+        "status",
+        "evidence"
+      ],
+      "properties": {
+        "criterion_id": {
+          "type": "string",
+          "pattern": "^AC-[0-9]+$"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "blocked",
+            "not_run"
+          ]
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

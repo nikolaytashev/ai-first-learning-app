@@ -1,0 +1,59 @@
+name: Decision required
+description: Request a human-owned product, privacy, security or architecture decision.
+title: "[Decision]: "
+labels:
+  - question
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Decision area
+      options:
+        - Product behaviour
+        - Scope or priority
+        - Privacy or data
+        - Security boundary
+        - Architecture
+        - Public API
+        - Destructive migration
+        - Budget or model policy
+    validations:
+      required: true
+
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision needed
+      description: State the exact question without selecting an answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and constraints
+      description: Link canonical context and describe why the decision is needed now.
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options and trade-offs
+      description: Compare viable options, risks, reversibility and operational cost.
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocked-work
+    attributes:
+      label: Work blocked by this decision
+      description: List affected issues, acceptance criteria or workflows.
+    validations:
+      required: true
+
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Agent recommendation
+      description: Optional recommendation with evidence. This is not approval.

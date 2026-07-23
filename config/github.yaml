@@ -1,0 +1,92 @@
+schema_version: 1
+
+repository:
+  owner: nikolaytashev
+  name: ai-first-learning-app
+  default_branch: master
+  visibility: public
+
+project:
+  owner: nikolaytashev
+  number: null
+  url: null
+  configuration_status: decision_required
+  required_fields:
+    Status:
+      type: single_select
+      options: [Inbox, Ready, In Progress, In Review, Awaiting Human, Blocked, Done, Cancelled]
+    Product Approval:
+      type: single_select
+      options: [Pending, Approved, Changes Requested, Rejected]
+    Type:
+      type: single_select
+      options: [Epic, Feature, Task, Bug, Decision, Architecture]
+    Priority:
+      type: single_select
+      options: [P0, P1, P2, P3]
+    Size:
+      type: single_select
+      options: [XS, S, M, L]
+    Current Role:
+      type: single_select
+      options: [PM, BA, Architect, Instructional Designer, Implementer, QA, Reviewer, Human]
+    Automation State:
+      type: single_select
+      options: [Queued, Running, Waiting, Failed, Completed]
+    Attempt Count:
+      type: number
+    Workflow ID:
+      type: text
+    Blocked Reason:
+      type: text
+
+authorization:
+  human_approvers:
+    - nikolaytashev
+  automation_login: null
+  automation_identity_status: decision_required
+  accepted_commands:
+    - /approve
+    - /request-changes
+    - /pause
+    - /resume
+    - /cancel
+
+branch_policy:
+  protected_branches:
+    - master
+  automation_branch_prefix: agent/
+  direct_push_to_default: forbidden
+  force_push: forbidden
+  deletion: forbidden
+  pull_request_required: true
+  required_conversation_resolution: true
+  required_status_checks:
+    - repository-validation
+  apply_to_administrators: true
+
+automation_permissions:
+  allowed:
+    - read_repository
+    - read_and_write_issues
+    - read_and_write_project_items
+    - create_issue_comments
+    - create_namespaced_branches
+    - push_namespaced_branches
+    - create_draft_pull_requests
+  forbidden:
+    - push_default_branch
+    - merge_pull_requests
+    - create_releases
+    - deploy
+    - manage_secrets
+    - manage_rulesets
+    - manage_collaborators
+    - change_visibility
+
+bootstrap_blockers:
+  - Configure project.number and project.url.
+  - Create and record the restricted automation identity.
+  - Apply and verify the default-branch ruleset.
+  - Approve config/model-profiles.yaml.
+  - Approve proposal-workflow usage budgets.
