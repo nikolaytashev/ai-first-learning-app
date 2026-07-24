@@ -1,16 +1,31 @@
-schema_version: 1
-configuration_status: decision_required
-execution_enabled: false
+schema_version: 2
+configuration_status: approved
+execution_enabled: true
 
 selection_policy:
   strategy: lowest_sufficient_profile
   fixed_model_per_role: false
-  automatic_escalation: false
+  automatic_escalation: true
+  maximum_automatic_escalations_per_action: 2
   escalation_requires:
-    - Stable reason code.
-    - Evidence that the current profile is insufficient.
-    - Remaining workflow budget.
+    - A stable reason code.
+    - New evidence that the current profile is insufficient.
+    - Remaining action and workflow budget.
+    - The target profile is allowed for the role and task.
+  stop_instead_of_escalate_for:
+    - PRODUCT_DECISION_REQUIRED
+    - CONFLICTING_HUMAN_DECISIONS
+    - ARCHITECTURE_APPROVAL_REQUIRED
+    - AUTHORIZATION_DENIED
+    - DEPENDENCY_UNAVAILABLE
+    - BUDGET_EXHAUSTED
+  retry_policy:
+    first_failure: same_profile_with_focused_evidence
+    repeated_same_root_cause: escalate_one_profile
+    third_agent_failure: fresh_session_at_allowed_maximum
+    fourth_agent_failure: block_for_human
   deescalate_after_corrective_run: true
+  record_selection_evidence: true
 
 profiles:
   text_light:
@@ -18,18 +33,29 @@ profiles:
     model: gpt-5.6-luna
     reasoning_effort: low
     intended_for:
-      - Classification.
+      - Classification and routing.
       - Mechanical text normalization.
       - Low-risk structured extraction.
+      - Documentation or metadata updates that do not change meaning.
+    prohibited_for:
+      - Architecture decisions.
+      - Security-sensitive analysis.
+      - Complex code implementation.
+      - Independent review of non-trivial code.
 
   code_light:
     provider: codex_cli
     model: gpt-5.4-mini
     reasoning_effort: medium
     intended_for:
-      - Focused deterministic checks.
-      - Routine QA execution.
-      - Small low-risk code changes.
+      - XS and S implementation with complete requirements.
+      - Focused test additions and routine defect repairs.
+      - Straightforward QA analysis using deterministic evidence.
+    prohibited_for:
+      - Material architecture changes.
+      - Authentication, authorization or privacy boundaries.
+      - Destructive migrations or data-loss risk.
+      - Complex concurrency or synchronization.
 
   balanced:
     provider: codex_cli
@@ -37,17 +63,20 @@ profiles:
     reasoning_effort: medium
     intended_for:
       - Product and requirements analysis.
+      - Normal issue decomposition.
       - Instructional design.
-      - Normal implementation and QA.
+      - M implementation and multi-file feature work.
+      - Behavioural QA and low-risk review.
 
   deep:
     provider: codex_cli
     model: gpt-5.6-sol
     reasoning_effort: high
     intended_for:
-      - Architecture.
-      - Complex implementation.
-      - Code review.
+      - Architecture and significant technical trade-offs.
+      - L implementation after decomposition review.
+      - Difficult debugging and cross-component changes.
+      - Independent code, security and architecture review.
 
   critical:
     provider: codex_cli
@@ -55,33 +84,149 @@ profiles:
     reasoning_effort: xhigh
     intended_for:
       - Security-sensitive or data-loss risk.
-      - Difficult concurrency or distributed-systems analysis.
+      - Destructive migrations.
+      - Difficult concurrency, synchronization or distributed-systems analysis.
       - Human-authorized escalation after failed deep reasoning.
+    activation:
+      requires_any:
+        - security_sensitive
+        - destructive_migration
+        - data_loss_risk
+        - concurrency_sensitive
+        - repeated_failure
+        - explicit_human_request
 
 role_defaults:
   product_manager:
     default: balanced
-    allowed_escalations: [deep]
+    action_overrides:
+      classify_feedback: text_light
+      apply_non_material_revision: text_light
+      create_feature_proposal: balanced
+      compare_product_options: balanced
+      resolve_complex_product_conflict: deep
+    allowed_profiles: [text_light, balanced, deep]
+    maximum: deep
+
   business_analysis:
     default: balanced
-    allowed_escalations: [deep]
+    action_overrides:
+      documentation_sync: text_light
+      context_index_update: text_light
+      issue_metadata_update: text_light
+      requirements_analysis: balanced
+      issue_decomposition: balanced
+      authoritative_source_conflict: deep
+    allowed_profiles: [text_light, balanced, deep]
+    maximum: deep
+
   software_architect:
     default: deep
-    allowed_escalations: [critical]
+    action_overrides:
+      apply_existing_pattern: balanced
+      local_component_change: balanced
+      architecture_design: deep
+      security_or_data_integrity_design: critical
+    allowed_profiles: [balanced, deep, critical]
+    maximum: critical
+
   instructional_designer:
     default: balanced
-    allowed_escalations: [deep]
+    action_overrides:
+      metadata_update: text_light
+      template_application: text_light
+      lesson_specification: balanced
+      module_design: balanced
+      pathway_design: deep
+    allowed_profiles: [text_light, balanced, deep]
+    maximum: deep
+
   implementer:
     default_by_size:
       XS: code_light
-      S: balanced
+      S: code_light
       M: balanced
-      L: forbidden_split_required
-    risk_escalation: deep
-    critical_escalation: critical
+      L: deep
+    risk_overrides:
+      high: deep
+      critical: critical
+    allowed_profiles: [code_light, balanced, deep, critical]
+    maximum: critical
+    require_decomposition_review_for_size: L
+
   qa:
-    default: code_light
-    allowed_escalations: [balanced, deep]
+    default_by_size:
+      XS: code_light
+      S: code_light
+      M: balanced
+      L: balanced
+    risk_overrides:
+      high: deep
+      critical: deep
+    allowed_profiles: [code_light, balanced, deep]
+    maximum: deep
+
   reviewer:
-    default: deep
-    allowed_escalations: [critical]
+    default_by_size:
+      XS: balanced
+      S: balanced
+      M: deep
+      L: deep
+    risk_overrides:
+      high: deep
+      critical: critical
+    allowed_profiles: [balanced, deep, critical]
+    maximum: critical
+
+task_classification:
+  required_fields:
+    - size
+    - risk
+    - ambiguity
+    - affected_areas
+    - security_sensitive
+    - persistent_data_change
+    - destructive_migration
+    - architecture_change
+    - user_visible_change
+    - concurrency_sensitive
+    - data_loss_risk
+    - previous_failures
+  size_values: [XS, S, M, L]
+  risk_values: [low, medium, high, critical]
+  ambiguity_values: [low, medium, high]
+
+routing_rules:
+  - when: size == XS and role permits a lighter profile
+    action: downgrade_one_profile
+  - when: size == L
+    action: upgrade_one_profile
+  - when: ambiguity == high
+    action: upgrade_one_profile
+  - when: architecture_change == true
+    action: minimum_profile_balanced
+  - when: security_sensitive == true
+    action: minimum_profile_deep
+  - when: destructive_migration == true or data_loss_risk == true
+    action: select_critical
+  - when: previous_failures >= 2
+    action: upgrade_one_profile
+  - when: product or human decision is missing
+    action: stop_without_escalation
+
+usage_controls:
+  count_failed_and_malformed_runs: true
+  count_retries: true
+  publish_per_action_usage: true
+  publish_issue_and_pull_request_totals: true
+  include_elapsed_time: true
+  monetary_cost_reporting: disabled_for_subscription_auth
+  warning_thresholds:
+    action_total_tokens: 120000
+    workflow_total_tokens: 500000
+    daily_total_tokens: null
+  hard_limits:
+    attempts_per_action: 3
+    corrective_implementation_cycles: 3
+    reviewer_cycles: 2
+    concurrent_workflows: 1

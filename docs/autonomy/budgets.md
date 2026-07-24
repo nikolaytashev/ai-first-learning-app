@@ -1,38 +1,66 @@
 # Execution Budgets
 
-The autonomous implementation loop must remain disabled until the human owner
-approves concrete token or usage limits and the always-on execution host. Retry
-limits are already defined in `failure-policy.md`.
+Model routing is approved in `config/model-profiles.yaml`. The orchestrator must
+enforce bounded concurrency, retries, elapsed time and usage warnings before
+autonomous execution.
 
-## Safe bootstrap defaults
+Codex is authenticated through a ChatGPT Plus subscription. Token measurements
+are operational telemetry, not a precise monetary cost or a guaranteed provider
+quota.
 
-These controls apply before implementation is enabled:
+## Initial approved controls
 
 | Control | Initial value |
 | --- | ---: |
 | Concurrent workflows | 1 |
 | Concurrent role runs per workflow | 1 |
 | Proposal workflow elapsed-time limit | 30 minutes |
-| Proposal workflow role runs | 2: Product Manager and Business Analysis |
-| Proposal workflow retries | 0, except one malformed-output correction |
-| Implementation workflow | Disabled |
-| Automatic model-tier escalation | Disabled |
+| Implementation workflow elapsed-time limit | 120 minutes |
+| Proposal workflow role runs | Product Manager and Business Analyst |
+| Malformed-output correction | 1 per role action |
+| Agent attempts per action | 3 |
+| Implementer corrective cycles | 3 |
+| Reviewer corrective cycles | 2 |
+| Automatic model escalations per action | 2 |
+| Action token warning | 120,000 measured tokens |
+| Workflow token warning | 500,000 measured tokens |
+| Daily hard token limit | Not set until subscription telemetry proves reliable |
 
-## Decisions required
+The token thresholds are warnings. An absent or partial usage event must be
+recorded as unavailable or partial, never as zero.
 
-- Always-on execution host and operating-system identity.
-- Per-role and per-workflow token or provider-usage limits.
-- Maximum implementation elapsed time.
-- Maximum daily and monthly provider usage.
-- Approved model names, reasoning levels and fallback order.
-- Whether unused budget carries between corrective attempts.
-- Human override process and audit reason.
+## Execution gates
+
+The proposal workflow may run when:
+
+- The GitHub Project number and required fields are configured.
+- The restricted automation identity is available.
+- Repository validation passes.
+- The Product Manager and Business Analyst output schemas are implemented.
+- Usage and elapsed-time accounting are implemented.
+
+The implementation workflow may run when:
+
+- The proposal workflow has completed successfully.
+- The issue has valid human approval.
+- Worktree isolation, validation, QA, review and corrective routing exist.
+- Draft pull-request creation and idempotent audit comments are implemented.
+- The default branch remains protected.
 
 ## Enforcement rules
 
-- Check remaining budget before every role run.
-- Count failed and malformed runs.
-- Stop with `BUDGET_EXHAUSTED`; do not truncate a result and treat it as success.
+- Check remaining attempts, elapsed time and measured usage before every role
+  run.
+- Count failed, malformed and retried calls.
+- Do not truncate an agent result and report success.
+- Publish usage totals and elapsed time without prompts, secrets or raw private
+  logs.
+- Use deterministic Python validation instead of model-driven standard test
+  execution.
+- Stop with `BUDGET_EXHAUSTED` when a hard limit is reached.
+- Exceeding a warning requires an audit event but does not silently cancel a
+  completed atomic action.
 - Budget changes require an allow-listed human and apply only to future runs
   unless `/resume` explicitly reauthorizes a blocked workflow.
-- Publish usage totals and elapsed time without prompt contents or secrets.
+- Critical profile selection requires an activation condition recorded in the
+  action audit.

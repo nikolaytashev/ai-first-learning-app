@@ -87,15 +87,31 @@ Design and implementation must isolate expected variation points:
 Avoid speculative abstraction. Add an abstraction only when it protects a
 known or reasonably expected variation point.
 
+## Model routing
+
+The Python orchestrator selects the model and reasoning effort for every agent
+action from `config/model-profiles.yaml`. Agents must not select or escalate
+their own model.
+
+The selection must use the lowest sufficient profile, follow the role and
+task-specific routing policy in `docs/autonomy/model-routing.md`, and record the
+classification and selection reasons.
+
+A stronger model does not expand authority or scope. Missing human decisions,
+authorization failures, unavailable dependencies and exhausted budgets stop the
+workflow rather than trigger additional model usage.
+
 ## Auditability
 
 Every agent action must record:
 
 - Agent identity and version.
 - Action type.
+- Selected model profile, model and reasoning effort.
+- Model-routing inputs and reason.
 - Start and completion time.
 - Elapsed time.
-- Token usage.
+- Input, output and total token usage when available.
 - Parent workflow.
 - GitHub issue or pull request.
 - Outcome.

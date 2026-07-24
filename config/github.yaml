@@ -88,5 +88,4 @@ bootstrap_blockers:
   - Configure project.number and project.url.
   - Create and record the restricted automation identity.
   - Apply and verify the default-branch ruleset.
-  - Approve config/model-profiles.yaml.
-  - Approve proposal-workflow usage budgets.
+  - Implement proposal-workflow usage and elapsed-time accounting.

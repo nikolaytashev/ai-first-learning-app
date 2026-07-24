@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-23"
+last_updated: "2026-07-24"
 
 authority_levels:
   repository_policy: Binding operating rule; changes require human review.
@@ -18,8 +18,8 @@ documents:
   - path: AGENTS.md
     title: Repository agent instructions
     authority: repository_policy
-    version: "1.1"
-    last_reviewed: "2026-07-23"
+    version: "1.2"
+    last_reviewed: "2026-07-24"
     consumers: [all_agents, orchestrator]
     task_types: [all]
 
@@ -154,9 +154,17 @@ documents:
   - path: docs/autonomy/roles.md
     title: Agent roles and separation of duties
     authority: repository_policy
-    version: "1.0"
-    last_reviewed: "2026-07-23"
+    version: "1.1"
+    last_reviewed: "2026-07-24"
     consumers: [all_agents, orchestrator]
+    task_types: [all]
+
+  - path: docs/autonomy/model-routing.md
+    title: Model routing and reasoning policy
+    authority: repository_policy
+    version: "1.0"
+    last_reviewed: "2026-07-24"
+    consumers: [all_agents, orchestrator, human_owner]
     task_types: [all]
 
   - path: docs/autonomy/approval-policy.md
@@ -185,16 +193,16 @@ documents:
 
   - path: docs/autonomy/budgets.md
     title: Execution budgets
-    authority: decision_required
-    version: "1.0"
-    last_reviewed: "2026-07-23"
+    authority: human_approved
+    version: "1.1"
+    last_reviewed: "2026-07-24"
     consumers: [orchestrator, human_owner]
     task_types: [bootstrap, execution, decision]
 
   - path: config/model-profiles.yaml
-    title: Proposed model profiles and role defaults
-    authority: decision_required
-    version: "1.0"
-    last_reviewed: "2026-07-23"
+    title: Approved model profiles and role defaults
+    authority: human_approved
+    version: "2.0"
+    last_reviewed: "2026-07-24"
     consumers: [orchestrator, human_owner]
     task_types: [bootstrap, execution, decision]
