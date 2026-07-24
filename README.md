@@ -61,7 +61,7 @@ context-index references, local Markdown links and required repository files.
 1. Resolve the blocking settings listed in
    [`docs/autonomy/budgets.md`](docs/autonomy/budgets.md) and
    [`config/github.yaml`](config/github.yaml).
-2. Apply the required GitHub Project fields and protect `master`.
+2. Apply the required GitHub Project fields and protect `main`.
 3. Provision the restricted GitHub App or bot identity and configure its
    credentials outside the repository.
 4. Implement the local Python orchestrator against the committed schemas.
