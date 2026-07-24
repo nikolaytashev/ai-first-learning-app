@@ -254,9 +254,9 @@ def validate_github_configuration() -> list[str]:
         return ["config/github.yaml: root must be a mapping"]
 
     repository = config.get("repository")
-    if not isinstance(repository, Mapping) or repository.get("default_branch") != "master":
+    if not isinstance(repository, Mapping) or repository.get("default_branch") != "main":
         errors.append(
-            "config/github.yaml: repository.default_branch must match GitHub default master"
+            "config/github.yaml: repository.default_branch must match GitHub default main"
         )
 
     authorization = config.get("authorization")
@@ -266,9 +266,9 @@ def validate_github_configuration() -> list[str]:
 
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     mission = (ROOT / "mission.yaml").read_text(encoding="utf-8")
-    if "Push directly to `master`" not in agents:
+    if "Push directly to `main`" not in agents:
         errors.append("AGENTS.md: direct-push rule must name the actual default branch")
-    if "Do not push directly to master" not in mission:
+    if "Do not push directly to main" not in mission:
         errors.append("mission.yaml: direct-push constraint must name the actual default branch")
     return errors
 
