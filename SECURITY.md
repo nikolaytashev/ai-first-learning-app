@@ -3,7 +3,7 @@
 ## Supported versions
 
 The project is in bootstrap development and has no supported production
-release. Security fixes apply to the current `master` branch.
+release. Security fixes apply to the current `main` branch.
 
 ## Reporting a vulnerability
 

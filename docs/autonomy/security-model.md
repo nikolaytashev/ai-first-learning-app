@@ -26,7 +26,7 @@ Prohibited capabilities:
 
 - Merge pull requests, create releases or deploy.
 - Change rulesets, repository visibility, collaborators or secrets.
-- Push to or delete `master`.
+- Push to or delete `main`.
 - Administer organizations or unrelated repositories.
 
 ## Credential isolation

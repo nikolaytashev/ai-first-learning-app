@@ -9,7 +9,7 @@ mission:
 human_constraints:
   - Do not merge pull requests.
   - Do not create releases.
-  - Do not push directly to master.
+  - Do not push directly to main.
   - Do not use cloud coding agents.
   - Do not expose secrets.
   - Use GitHub as the remote control plane.
