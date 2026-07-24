@@ -12,7 +12,7 @@ a feature branch and pull-request review.
 
 ## Workflow
 
-1. Branch from `master` using `feature/`, `fix/`, `docs/` or `agent/`.
+1. Branch from `main` using `feature/`, `fix/`, `docs/` or `agent/`.
 2. Keep the change focused on one approved issue or bootstrap objective.
 3. Add or update tests and documentation with the implementation.
 4. Run the commands under **Local validation** in `README.md`.
