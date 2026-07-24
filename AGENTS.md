@@ -12,7 +12,7 @@ Agents may:
 
 Agents may not:
 
-- Push directly to `master`.
+- Push directly to `main`.
 - Merge pull requests.
 - Create releases.
 - Change repository visibility.
@@ -41,7 +41,7 @@ issue.
 
 Before the first autonomous issue exists, a human-directed bootstrap change may
 be prepared on a feature branch and submitted as a pull request. This exception
-does not permit direct pushes to `master`, autonomous product decisions or
+does not permit direct pushes to `main`, autonomous product decisions or
 implementation of product features.
 
 The Python orchestrator is responsible for running required formatting,
