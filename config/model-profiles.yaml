@@ -1,0 +1,87 @@
+schema_version: 1
+configuration_status: decision_required
+execution_enabled: false
+
+selection_policy:
+  strategy: lowest_sufficient_profile
+  fixed_model_per_role: false
+  automatic_escalation: false
+  escalation_requires:
+    - Stable reason code.
+    - Evidence that the current profile is insufficient.
+    - Remaining workflow budget.
+  deescalate_after_corrective_run: true
+
+profiles:
+  text_light:
+    provider: codex_cli
+    model: gpt-5.6-luna
+    reasoning_effort: low
+    intended_for:
+      - Classification.
+      - Mechanical text normalization.
+      - Low-risk structured extraction.
+
+  code_light:
+    provider: codex_cli
+    model: gpt-5.4-mini
+    reasoning_effort: medium
+    intended_for:
+      - Focused deterministic checks.
+      - Routine QA execution.
+      - Small low-risk code changes.
+
+  balanced:
+    provider: codex_cli
+    model: gpt-5.6-terra
+    reasoning_effort: medium
+    intended_for:
+      - Product and requirements analysis.
+      - Instructional design.
+      - Normal implementation and QA.
+
+  deep:
+    provider: codex_cli
+    model: gpt-5.6-sol
+    reasoning_effort: high
+    intended_for:
+      - Architecture.
+      - Complex implementation.
+      - Code review.
+
+  critical:
+    provider: codex_cli
+    model: gpt-5.6-sol
+    reasoning_effort: xhigh
+    intended_for:
+      - Security-sensitive or data-loss risk.
+      - Difficult concurrency or distributed-systems analysis.
+      - Human-authorized escalation after failed deep reasoning.
+
+role_defaults:
+  product_manager:
+    default: balanced
+    allowed_escalations: [deep]
+  business_analysis:
+    default: balanced
+    allowed_escalations: [deep]
+  software_architect:
+    default: deep
+    allowed_escalations: [critical]
+  instructional_designer:
+    default: balanced
+    allowed_escalations: [deep]
+  implementer:
+    default_by_size:
+      XS: code_light
+      S: balanced
+      M: balanced
+      L: forbidden_split_required
+    risk_escalation: deep
+    critical_escalation: critical
+  qa:
+    default: code_light
+    allowed_escalations: [balanced, deep]
+  reviewer:
+    default: deep
+    allowed_escalations: [critical]

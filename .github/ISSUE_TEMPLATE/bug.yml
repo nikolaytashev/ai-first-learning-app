@@ -1,0 +1,55 @@
+name: Bug report
+description: Report reproducible incorrect behaviour.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behaviour
+      description: What happened, including the user or system impact?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What approved behaviour was expected? Link its requirement.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Give the smallest safe sequence that reproduces the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include versions and platform, but no credentials or personal data.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Add sanitized logs, screenshots or traces. Remove secrets and personal data.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Critical - security, data loss or system unavailable
+        - High - core flow unusable with no workaround
+        - Medium - impaired behaviour with a workaround
+        - Low - limited impact
+    validations:
+      required: true

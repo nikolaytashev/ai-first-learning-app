@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 
 mission:
   id: bootstrap-autonomous-system
@@ -9,11 +9,18 @@ mission:
 human_constraints:
   - Do not merge pull requests.
   - Do not create releases.
-  - Do not push directly to main after bootstrap.
+  - Do not push directly to master.
   - Do not use cloud coding agents.
   - Do not expose secrets.
   - Use GitHub as the remote control plane.
   - Use Codex CLI as the initial agent provider.
+
+preconditions:
+  - The GitHub Project number and required fields are configured.
+  - The allow-listed human approver is configured.
+  - The restricted automation identity is configured outside the repository.
+  - Proposal-workflow budgets are approved.
+  - Repository validation passes.
 
 first_autonomous_workflow:
   - Load the canonical project context.
@@ -22,6 +29,7 @@ first_autonomous_workflow:
   - Validate proposal schemas.
   - Publish proposals as GitHub issues.
   - Add them to the GitHub Project.
+  - Persist idempotency keys for all GitHub side effects.
   - Record token usage and elapsed time.
   - Set product approval to Pending.
   - Stop and wait for human approval.

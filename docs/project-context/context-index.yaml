@@ -1,0 +1,200 @@
+schema_version: 1
+last_updated: "2026-07-23"
+
+authority_levels:
+  repository_policy: Binding operating rule; changes require human review.
+  human_approved: Product or architecture context explicitly accepted by the human owner.
+  working_draft: Useful context that may evolve without changing an approved decision.
+  decision_required: Unresolved input that agents must return to the human owner.
+
+loading_rules:
+  - Load AGENTS.md for every agent run.
+  - Load only entries whose consumers or task_types match the current assignment.
+  - Treat decision_required sections as questions, never as permission to invent behaviour.
+  - Prefer the highest-authority entry when context conflicts.
+  - Return unresolved conflicts to the Business Analyst or human owner.
+
+documents:
+  - path: AGENTS.md
+    title: Repository agent instructions
+    authority: repository_policy
+    version: "1.1"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator]
+    task_types: [all]
+
+  - path: mission.yaml
+    title: Bootstrap autonomous-system mission
+    authority: human_approved
+    version: "1.1"
+    last_reviewed: "2026-07-23"
+    consumers: [orchestrator, product_manager]
+    task_types: [bootstrap, proposal_generation]
+
+  - path: docs/product/vision.md
+    title: Product vision
+    authority: human_approved
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis, architect]
+    task_types: [discovery, planning, architecture]
+
+  - path: docs/product/problem-statement.md
+    title: Problem statement
+    authority: working_draft
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis]
+    task_types: [discovery, proposal_generation]
+
+  - path: docs/product/target-users.md
+    title: Target users
+    authority: human_approved
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis, ux]
+    task_types: [discovery, proposal_generation, acceptance_criteria]
+
+  - path: docs/product/initial-scope.md
+    title: Initial scope
+    authority: human_approved
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis, architect]
+    task_types: [planning, proposal_generation, architecture]
+
+  - path: docs/product/non-goals.md
+    title: Initial non-goals
+    authority: human_approved
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents]
+    task_types: [planning, implementation, review]
+
+  - path: docs/product/product-principles.md
+    title: Product principles
+    authority: human_approved
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents]
+    task_types: [discovery, planning, implementation, review]
+
+  - path: docs/product/success-metrics.md
+    title: MVP success metrics
+    authority: decision_required
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis, human_owner]
+    task_types: [discovery, prioritization, decision]
+
+  - path: docs/product/user-journeys.md
+    title: Initial user journeys
+    authority: working_draft
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis, architect, qa]
+    task_types: [proposal_generation, acceptance_criteria, architecture, testing]
+
+  - path: docs/product/business-rules.md
+    title: Product business rules
+    authority: decision_required
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [business_analysis, architect, implementer, qa]
+    task_types: [requirements, acceptance_criteria, implementation, testing]
+
+  - path: docs/product/content-governance.md
+    title: Learning-content governance
+    authority: decision_required
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis, instructional_designer]
+    task_types: [content, requirements, review]
+
+  - path: docs/product/privacy-and-data.md
+    title: Privacy and data boundaries
+    authority: decision_required
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [product_manager, business_analysis, architect, security, qa]
+    task_types: [requirements, architecture, implementation, review]
+
+  - path: docs/product/human-decisions.md
+    title: Human-owned decisions
+    authority: repository_policy
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator]
+    task_types: [all]
+
+  - path: docs/architecture/constraints.md
+    title: Architecture constraints
+    authority: human_approved
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [architect, implementer, qa, reviewer]
+    task_types: [architecture, planning, implementation, review]
+
+  - path: docs/architecture/decisions/0001-autonomy-boundaries.md
+    title: Autonomous-development authority boundaries
+    authority: human_approved
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator]
+    task_types: [bootstrap, planning, implementation, review]
+
+  - path: docs/autonomy/workflow.md
+    title: Autonomous workflow
+    authority: repository_policy
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator]
+    task_types: [all]
+
+  - path: docs/autonomy/roles.md
+    title: Agent roles and separation of duties
+    authority: repository_policy
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator]
+    task_types: [all]
+
+  - path: docs/autonomy/approval-policy.md
+    title: Human approval policy
+    authority: repository_policy
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator, human_owner]
+    task_types: [approval, planning, implementation]
+
+  - path: docs/autonomy/failure-policy.md
+    title: Failure and retry policy
+    authority: repository_policy
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator, human_owner]
+    task_types: [handoff, validation, recovery]
+
+  - path: docs/autonomy/security-model.md
+    title: Autonomous-system security model
+    authority: repository_policy
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [all_agents, orchestrator, security]
+    task_types: [all]
+
+  - path: docs/autonomy/budgets.md
+    title: Execution budgets
+    authority: decision_required
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [orchestrator, human_owner]
+    task_types: [bootstrap, execution, decision]
+
+  - path: config/model-profiles.yaml
+    title: Proposed model profiles and role defaults
+    authority: decision_required
+    version: "1.0"
+    last_reviewed: "2026-07-23"
+    consumers: [orchestrator, human_owner]
+    task_types: [bootstrap, execution, decision]

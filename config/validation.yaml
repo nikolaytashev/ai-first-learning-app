@@ -1,0 +1,60 @@
+schema_version: 1
+
+profiles:
+  repository:
+    path_patterns:
+      - "**"
+    commands:
+      - python scripts/validate_repository.py
+      - ruff check .
+      - ruff format --check .
+      - mypy scripts tests
+      - pytest
+      - detect-secrets scan --baseline .secrets.baseline
+      - git diff --exit-code .secrets.baseline
+
+  orchestrator:
+    path_patterns:
+      - "orchestrator/**/*.py"
+      - "scripts/**/*.py"
+      - "tests/**/*.py"
+    commands:
+      - ruff check orchestrator scripts tests
+      - ruff format --check orchestrator scripts tests
+      - mypy orchestrator scripts tests
+      - pytest
+
+  flutter:
+    path_patterns:
+      - "mobile/**/*.dart"
+      - "mobile/pubspec.yaml"
+      - "mobile/pubspec.lock"
+    commands:
+      - dart format --output=none --set-exit-if-changed mobile
+      - flutter analyze
+      - flutter test
+
+  dotnet:
+    path_patterns:
+      - "backend/**/*.cs"
+      - "backend/**/*.csproj"
+      - "backend/**/*.sln"
+    commands:
+      - dotnet format backend --verify-no-changes
+      - dotnet build backend --no-restore
+      - dotnet test backend --no-build
+
+  documentation:
+    path_patterns:
+      - "**/*.md"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "schemas/**/*.json"
+    commands:
+      - python scripts/validate_repository.py
+
+selection:
+  always_run:
+    - repository
+  include_matching_profiles: true
+  fail_on_unknown_changed_path: false
