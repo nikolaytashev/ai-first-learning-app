@@ -3,7 +3,7 @@ schema_version: 1
 repository:
   owner: nikolaytashev
   name: ai-first-learning-app
-  default_branch: master
+  default_branch: main
   visibility: public
 
 project:
@@ -54,7 +54,7 @@ authorization:
 
 branch_policy:
   protected_branches:
-    - master
+    - main
   automation_branch_prefix: agent/
   direct_push_to_default: forbidden
   force_push: forbidden
