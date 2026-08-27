@@ -75,6 +75,42 @@ def feature_proposal() -> dict[str, Any]:
     }
 
 
+def proposal_review() -> dict[str, Any]:
+    """Return a representative accepted Business Analysis proposal review."""
+    return {
+        "schema_version": 1,
+        "workflow_id": "wf-0001",
+        "proposal_id": "FP-0001",
+        "proposal_version": 1,
+        "verdict": "accepted",
+        "summary": "The proposal is bounded, unique and independently testable.",
+        "duplicate_assessment": {
+            "status": "no_duplicate",
+            "evidence": ["No overlapping approved proposal was identified."],
+        },
+        "size_assessment": {
+            "status": "appropriate",
+            "suggested_size": "S",
+            "reason": "The proposal contains one bounded user-visible behaviour.",
+        },
+        "acceptance_criteria_results": [
+            {
+                "criterion_id": "AC-1",
+                "status": "testable",
+                "feedback": "Verification is explicit and observable.",
+            }
+        ],
+        "decisions_required": ["Approve the progress synchronization conflict rule."],
+        "required_revisions": [],
+        "context_refs": ["docs/product/user-journeys.md"],
+        "provenance": {
+            "role": "business_analysis",
+            "agent_version": "ba-1",
+            "generated_at": "2026-07-23T12:00:01Z",
+        },
+    }
+
+
 def agent_result() -> dict[str, Any]:
     """Return a representative completed agent result."""
     return {
@@ -174,6 +210,7 @@ def test_repository_validation_passes() -> None:
     ("schema_name", "instance"),
     [
         ("feature-proposal.schema.json", feature_proposal()),
+        ("proposal-review.schema.json", proposal_review()),
         ("agent-result.schema.json", agent_result()),
         ("handoff.schema.json", handoff()),
         ("validation-report.schema.json", validation_report()),
