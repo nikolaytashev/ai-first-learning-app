@@ -150,9 +150,7 @@ def load_config(
         isinstance(item, str) for item in protected_raw
     ):
         raise ValueError("branch_policy.protected_branches must be a string list")
-    if not isinstance(checks_raw, list) or not all(
-        isinstance(item, str) for item in checks_raw
-    ):
+    if not isinstance(checks_raw, list) or not all(isinstance(item, str) for item in checks_raw):
         raise ValueError("branch_policy.required_status_checks must be a string list")
     branch_policy = BranchPolicySettings(
         protected_branches=tuple(cast(list[str], protected_raw)),
@@ -239,9 +237,7 @@ def select_model(
         )
 
     allowed_raw = role_config.get("allowed_profiles")
-    if not isinstance(allowed_raw, list) or not all(
-        isinstance(item, str) for item in allowed_raw
-    ):
+    if not isinstance(allowed_raw, list) or not all(isinstance(item, str) for item in allowed_raw):
         raise ValueError(f"role_defaults.{role}.allowed_profiles must be a string list")
     allowed = cast(list[str], allowed_raw)
     if attempt >= 3:
