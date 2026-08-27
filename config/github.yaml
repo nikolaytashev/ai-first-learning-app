@@ -44,6 +44,7 @@ authorization:
   human_approvers:
     - nikolaytashev
   automation_login: null
+  automation_identity_type: null
   automation_identity_status: decision_required
   accepted_commands:
     - /approve
@@ -68,6 +69,7 @@ branch_policy:
 automation_permissions:
   allowed:
     - read_repository
+    - read_repository_rules
     - read_and_write_issues
     - read_and_write_project_items
     - create_issue_comments
@@ -86,6 +88,5 @@ automation_permissions:
 
 bootstrap_blockers:
   - Configure project.number and project.url.
-  - Create and record the restricted automation identity.
+  - Configure and provision the restricted automation identity outside the repository.
   - Apply and verify the default-branch ruleset.
-  - Implement proposal-workflow usage and elapsed-time accounting.
