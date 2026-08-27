@@ -219,11 +219,12 @@ class GitHubClient:
                 errors.append(f"invalid field contract for {name!r}")
                 continue
             expected_type = raw_contract.get("type")
-            expected_github_type = {
+            type_map = {
                 "single_select": "SINGLE_SELECT",
                 "number": "NUMBER",
                 "text": "TEXT",
-            }.get(expected_type)
+            }
+            expected_github_type = type_map.get(expected_type) if isinstance(expected_type, str) else None
             if expected_github_type and field.data_type != expected_github_type:
                 errors.append(
                     f"Project field {name!r} has type {field.data_type}, "
@@ -269,11 +270,12 @@ class GitHubClient:
                 parameters.get("required_status_checks") if isinstance(parameters, dict) else None
             )
             if isinstance(raw_checks, list):
-                contexts = {
-                    check.get("context")
-                    for check in raw_checks
-                    if isinstance(check, dict) and isinstance(check.get("context"), str)
-                }
+                for check in raw_checks:
+                    if not isinstance(check, dict):
+                        continue
+                    context = check.get("context")
+                    if isinstance(context, str):
+                        contexts.add(context)
         missing_checks = set(self._config.branch_policy.required_status_checks) - contexts
         if missing_checks:
             message = f"main rules are missing required status checks: {sorted(missing_checks)}"
