@@ -276,7 +276,8 @@ class GitHubClient:
                 }
         missing_checks = set(self._config.branch_policy.required_status_checks) - contexts
         if missing_checks:
-            errors.append(f"main rules are missing required status checks: {sorted(missing_checks)}")
+            message = f"main rules are missing required status checks: {sorted(missing_checks)}"
+            errors.append(message)
 
         rulesets_raw = self._rest("GET", f"/repos/{repo}/rulesets?includes_parents=false")
         if not isinstance(rulesets_raw, list) or not rulesets_raw:
