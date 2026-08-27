@@ -8,7 +8,14 @@ from pathlib import Path
 from scripts.orchestrator.codex import sanitized_agent_environment, validate_output
 from scripts.orchestrator.config import load_config, select_model
 from scripts.orchestrator.github import ProjectField, ProjectSnapshot
-from scripts.orchestrator.model import CodexRun, IssueRef, ModelSelection, Usage
+from scripts.orchestrator.model import (
+    CodexRun,
+    IssueRef,
+    JsonObject,
+    ModelSelection,
+    OrchestratorConfig,
+    Usage,
+)
 from scripts.orchestrator.proposal import ProposalWorkflow
 from scripts.orchestrator.state import StateStore
 from scripts.validate_repository import ROOT
@@ -29,16 +36,22 @@ class FakeAgent:
         timeout_seconds: int,
     ) -> CodexRun:
         self.calls += 1
+        assert model.model
+        assert timeout_seconds > 0
         workflow_id = _match(prompt, r"workflow_id: (wf-[a-f0-9]+)")
         proposal_id = _match(prompt, r"proposal_id: (FP-[0-9]+)")
         version = int(_match(prompt, r"proposal_version: ([0-9]+)"))
+
+        output: JsonObject
         if schema_path.name == "feature-proposal.schema.json":
             output = {
                 "schema_version": 1,
                 "proposal_id": proposal_id,
                 "proposal_version": version,
                 "title": "Resume the learner's current lesson",
-                "problem": "Returning learners need a reliable way to resume an interrupted lesson.",
+                "problem": (
+                    "Returning learners need a reliable way to resume an interrupted lesson."
+                ),
                 "target_users": ["Software professionals using short learning sessions"],
                 "desired_outcome": (
                     "A returning learner can continue from the last confirmed learning position."
@@ -57,7 +70,9 @@ class FakeAgent:
                 "acceptance_criteria": [
                     {
                         "id": "AC-1",
-                        "statement": "A returning learner can open the last confirmed lesson position.",
+                        "statement": (
+                            "A returning learner can open the last confirmed lesson position."
+                        ),
                         "verification": "Automated integration test and independent QA scenario",
                     }
                 ],
@@ -90,7 +105,11 @@ class FakeAgent:
                     "reason": "One bounded user-visible behaviour.",
                 },
                 "acceptance_criteria_results": [
-                    {"criterion_id": "AC-1", "status": "testable", "feedback": ""}
+                    {
+                        "criterion_id": "AC-1",
+                        "status": "testable",
+                        "feedback": "",
+                    }
                 ],
                 "decisions_required": [],
                 "required_revisions": [],
@@ -130,7 +149,11 @@ class FakeGitHub:
             "Attempt Count": ProjectField("attempts", "NUMBER", {}),
             "Workflow ID": ProjectField("workflow", "TEXT", {}),
         }
-        self.project = ProjectSnapshot("project-1", "https://github.com/users/test/projects/1", fields)
+        self.project = ProjectSnapshot(
+            "project-1",
+            "https://github.com/users/test/projects/1",
+            fields,
+        )
 
     def project_snapshot(self) -> ProjectSnapshot:
         return self.project
@@ -185,7 +208,7 @@ def _match(text: str, pattern: str) -> str:
     return match.group(1)
 
 
-def configured(tmp_path: Path):  # type: ignore[no-untyped-def]
+def configured(tmp_path: Path) -> OrchestratorConfig:
     """Load repository policy with local non-secret bootstrap identifiers."""
     return load_config(
         ROOT,
