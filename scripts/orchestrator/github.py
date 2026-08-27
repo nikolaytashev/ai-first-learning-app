@@ -62,7 +62,7 @@ class GitHubClient:
             },
         )
         try:
-            with urlopen(request, timeout=30) as response:  # noqa: S310
+            with urlopen(request, timeout=30) as response:
                 body = response.read().decode("utf-8")
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[-1000:]
@@ -280,7 +280,10 @@ class GitHubClient:
                 }
         missing_checks = set(self._config.branch_policy.required_status_checks) - contexts
         if missing_checks:
-            errors.append(f"main rules are missing required status checks: {sorted(missing_checks)}")
+            errors.append(
+                "main rules are missing required status checks: "
+                f"{sorted(missing_checks)}"
+            )
 
         rulesets_raw = self._rest("GET", f"/repos/{repo}/rulesets?includes_parents=false")
         if not isinstance(rulesets_raw, list) or not rulesets_raw:
