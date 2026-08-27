@@ -224,7 +224,10 @@ class GitHubClient:
                 "number": "NUMBER",
                 "text": "TEXT",
             }
-            expected_github_type = type_map.get(expected_type) if isinstance(expected_type, str) else None
+            if isinstance(expected_type, str):
+                expected_github_type = type_map.get(expected_type)
+            else:
+                expected_github_type = None
             if expected_github_type and field.data_type != expected_github_type:
                 errors.append(
                     f"Project field {name!r} has type {field.data_type}, "
