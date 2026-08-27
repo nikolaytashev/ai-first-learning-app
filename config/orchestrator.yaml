@@ -1,0 +1,18 @@
+schema_version: 1
+
+proposal_workflow:
+  max_elapsed_seconds: 1800
+  max_role_attempts: 3
+  max_revision_cycles: 1
+  malformed_output_corrections: 1
+  action_token_warning: 120000
+  workflow_token_warning: 500000
+
+state:
+  directory_env: ORCHESTRATOR_STATE_DIRECTORY
+  default_directory: .orchestrator
+
+codex:
+  executable: codex
+  sandbox: read-only
+  web_search: disabled
