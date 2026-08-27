@@ -12,7 +12,6 @@ import yaml
 from scripts.orchestrator.model import (
     AuthorizationSettings,
     BranchPolicySettings,
-    JsonObject,
     ModelSelection,
     OrchestratorConfig,
     ProjectSettings,
@@ -50,12 +49,20 @@ def _load_yaml(path: Path) -> Mapping[str, Any]:
     return _mapping(raw, str(path))
 
 
-def _env_or(value: str | None, env_name: str, environment: Mapping[str, str]) -> str | None:
+def _env_or(
+    value: str | None,
+    env_name: str,
+    environment: Mapping[str, str],
+) -> str | None:
     override = environment.get(env_name)
     return override if override else value
 
 
-def _env_int_or(value: int | None, env_name: str, environment: Mapping[str, str]) -> int | None:
+def _env_int_or(
+    value: int | None,
+    env_name: str,
+    environment: Mapping[str, str],
+) -> int | None:
     override = environment.get(env_name)
     if not override:
         return value
@@ -80,7 +87,10 @@ def load_config(
     repository = RepositorySettings(
         owner=_string(repository_raw.get("owner"), "repository.owner"),
         name=_string(repository_raw.get("name"), "repository.name"),
-        default_branch=_string(repository_raw.get("default_branch"), "repository.default_branch"),
+        default_branch=_string(
+            repository_raw.get("default_branch"),
+            "repository.default_branch",
+        ),
     )
 
     project_raw = _mapping(github.get("project"), "project")
@@ -92,7 +102,10 @@ def load_config(
         "GITHUB_PROJECT_URL",
         env,
     )
-    required_fields = _mapping(project_raw.get("required_fields"), "project.required_fields")
+    required_fields = _mapping(
+        project_raw.get("required_fields"),
+        "project.required_fields",
+    )
     project = ProjectSettings(
         owner=_string(project_raw.get("owner"), "project.owner"),
         number=project_number,
@@ -102,10 +115,15 @@ def load_config(
 
     authorization_raw = _mapping(github.get("authorization"), "authorization")
     approvers_raw = authorization_raw.get("human_approvers")
-    if not isinstance(approvers_raw, list) or not all(isinstance(item, str) for item in approvers_raw):
+    if not isinstance(approvers_raw, list) or not all(
+        isinstance(item, str) for item in approvers_raw
+    ):
         raise ValueError("authorization.human_approvers must be a string list")
     automation_login = _env_or(
-        _optional_string(authorization_raw.get("automation_login"), "authorization.automation_login"),
+        _optional_string(
+            authorization_raw.get("automation_login"),
+            "authorization.automation_login",
+        ),
         "GITHUB_AUTOMATION_LOGIN",
         env,
     )
@@ -128,9 +146,13 @@ def load_config(
     branch_raw = _mapping(github.get("branch_policy"), "branch_policy")
     protected_raw = branch_raw.get("protected_branches")
     checks_raw = branch_raw.get("required_status_checks")
-    if not isinstance(protected_raw, list) or not all(isinstance(item, str) for item in protected_raw):
+    if not isinstance(protected_raw, list) or not all(
+        isinstance(item, str) for item in protected_raw
+    ):
         raise ValueError("branch_policy.protected_branches must be a string list")
-    if not isinstance(checks_raw, list) or not all(isinstance(item, str) for item in checks_raw):
+    if not isinstance(checks_raw, list) or not all(
+        isinstance(item, str) for item in checks_raw
+    ):
         raise ValueError("branch_policy.required_status_checks must be a string list")
     branch_policy = BranchPolicySettings(
         protected_branches=tuple(cast(list[str], protected_raw)),
@@ -141,35 +163,46 @@ def load_config(
     state_raw = _mapping(runtime_raw.get("state"), "state")
     codex_raw = _mapping(runtime_raw.get("codex"), "codex")
     state_env = _string(state_raw.get("directory_env"), "state.directory_env")
-    default_state = _string(state_raw.get("default_directory"), "state.default_directory")
+    default_state = _string(
+        state_raw.get("default_directory"),
+        "state.default_directory",
+    )
     state_directory = root / env.get(state_env, default_state)
     runtime = RuntimeSettings(
         state_directory=state_directory,
         proposal_elapsed_seconds=_int(
-            proposal_raw.get("max_elapsed_seconds"), "proposal_workflow.max_elapsed_seconds"
+            proposal_raw.get("max_elapsed_seconds"),
+            "proposal_workflow.max_elapsed_seconds",
         ),
         max_role_attempts=_int(
-            proposal_raw.get("max_role_attempts"), "proposal_workflow.max_role_attempts"
+            proposal_raw.get("max_role_attempts"),
+            "proposal_workflow.max_role_attempts",
         ),
         max_revision_cycles=_int(
-            proposal_raw.get("max_revision_cycles"), "proposal_workflow.max_revision_cycles"
+            proposal_raw.get("max_revision_cycles"),
+            "proposal_workflow.max_revision_cycles",
         ),
         malformed_output_corrections=_int(
             proposal_raw.get("malformed_output_corrections"),
             "proposal_workflow.malformed_output_corrections",
         ),
         action_token_warning=_int(
-            proposal_raw.get("action_token_warning"), "proposal_workflow.action_token_warning"
+            proposal_raw.get("action_token_warning"),
+            "proposal_workflow.action_token_warning",
         ),
         workflow_token_warning=_int(
-            proposal_raw.get("workflow_token_warning"), "proposal_workflow.workflow_token_warning"
+            proposal_raw.get("workflow_token_warning"),
+            "proposal_workflow.workflow_token_warning",
         ),
         codex_executable=_string(codex_raw.get("executable"), "codex.executable"),
         codex_sandbox=_string(codex_raw.get("sandbox"), "codex.sandbox"),
         codex_web_search=_string(codex_raw.get("web_search"), "codex.web_search"),
     )
 
-    if models.get("configuration_status") != "approved" or models.get("execution_enabled") is not True:
+    if (
+        models.get("configuration_status") != "approved"
+        or models.get("execution_enabled") is not True
+    ):
         raise ValueError("model profiles are not approved for execution")
 
     return OrchestratorConfig(
@@ -182,7 +215,12 @@ def load_config(
     )
 
 
-def select_model(config: OrchestratorConfig, role: str, action: str, attempt: int) -> ModelSelection:
+def select_model(
+    config: OrchestratorConfig,
+    role: str,
+    action: str,
+    attempt: int,
+) -> ModelSelection:
     """Select the lowest approved profile, escalating only after repeated failure."""
     defaults = _mapping(config.model_profiles.get("role_defaults"), "role_defaults")
     role_config = _mapping(defaults.get(role), f"role_defaults.{role}")
@@ -190,12 +228,20 @@ def select_model(config: OrchestratorConfig, role: str, action: str, attempt: in
     overrides = role_config.get("action_overrides")
     profile_name: str
     if isinstance(overrides, Mapping) and action in overrides:
-        profile_name = _string(overrides[action], f"role_defaults.{role}.action_overrides.{action}")
+        profile_name = _string(
+            overrides[action],
+            f"role_defaults.{role}.action_overrides.{action}",
+        )
     else:
-        profile_name = _string(role_config.get("default"), f"role_defaults.{role}.default")
+        profile_name = _string(
+            role_config.get("default"),
+            f"role_defaults.{role}.default",
+        )
 
     allowed_raw = role_config.get("allowed_profiles")
-    if not isinstance(allowed_raw, list) or not all(isinstance(item, str) for item in allowed_raw):
+    if not isinstance(allowed_raw, list) or not all(
+        isinstance(item, str) for item in allowed_raw
+    ):
         raise ValueError(f"role_defaults.{role}.allowed_profiles must be a string list")
     allowed = cast(list[str], allowed_raw)
     if attempt >= 3:
@@ -206,9 +252,13 @@ def select_model(config: OrchestratorConfig, role: str, action: str, attempt: in
     profile = _mapping(profiles.get(profile_name), f"profiles.{profile_name}")
     return ModelSelection(
         profile=profile_name,
-        provider=_string(profile.get("provider"), f"profiles.{profile_name}.provider"),
+        provider=_string(
+            profile.get("provider"),
+            f"profiles.{profile_name}.provider",
+        ),
         model=_string(profile.get("model"), f"profiles.{profile_name}.model"),
         reasoning_effort=_string(
-            profile.get("reasoning_effort"), f"profiles.{profile_name}.reasoning_effort"
+            profile.get("reasoning_effort"),
+            f"profiles.{profile_name}.reasoning_effort",
         ),
     )
