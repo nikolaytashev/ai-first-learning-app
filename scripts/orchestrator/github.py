@@ -112,9 +112,7 @@ class GitHubClient:
         elif identity_type == "github_app":
             raw_installation = self._rest("GET", "/installation/repositories?per_page=100")
             repositories = (
-                raw_installation.get("repositories")
-                if isinstance(raw_installation, dict)
-                else None
+                raw_installation.get("repositories") if isinstance(raw_installation, dict) else None
             )
             if not isinstance(repositories, list):
                 errors.append("GITHUB_TOKEN is not a GitHub App installation access token")
@@ -268,9 +266,7 @@ class GitHubClient:
         if isinstance(check_rule, dict):
             parameters = check_rule.get("parameters")
             raw_checks = (
-                parameters.get("required_status_checks")
-                if isinstance(parameters, dict)
-                else None
+                parameters.get("required_status_checks") if isinstance(parameters, dict) else None
             )
             if isinstance(raw_checks, list):
                 contexts = {
@@ -280,10 +276,7 @@ class GitHubClient:
                 }
         missing_checks = set(self._config.branch_policy.required_status_checks) - contexts
         if missing_checks:
-            errors.append(
-                "main rules are missing required status checks: "
-                f"{sorted(missing_checks)}"
-            )
+            errors.append(f"main rules are missing required status checks: {sorted(missing_checks)}")
 
         rulesets_raw = self._rest("GET", f"/repos/{repo}/rulesets?includes_parents=false")
         if not isinstance(rulesets_raw, list) or not rulesets_raw:
