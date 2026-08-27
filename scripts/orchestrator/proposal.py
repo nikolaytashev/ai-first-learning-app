@@ -422,8 +422,10 @@ Canonical context data:
             decision_lines = ["- None"]
 
         scope = proposal.get("scope")
-        scope_in = scope.get("in") if isinstance(scope, dict) else []
-        scope_out = scope.get("out") if isinstance(scope, dict) else []
+        raw_scope_in = scope.get("in") if isinstance(scope, dict) else None
+        raw_scope_out = scope.get("out") if isinstance(scope, dict) else None
+        scope_in = raw_scope_in if isinstance(raw_scope_in, list) else []
+        scope_out = raw_scope_out if isinstance(raw_scope_out, list) else []
         generated_note = (
             "Generated autonomously. Product approval is pending; implementation is not authorized."
         )
