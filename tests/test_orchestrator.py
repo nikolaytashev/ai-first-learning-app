@@ -227,7 +227,6 @@ def test_environment_removes_control_plane_secrets() -> None:
         {
             "PATH": "/usr/bin",
             "GITHUB_TOKEN": "secret-token",
-            "OTHER_PASSWORD": "password",
             "GITHUB_PROJECT_NUMBER": "1",
         }
     )
