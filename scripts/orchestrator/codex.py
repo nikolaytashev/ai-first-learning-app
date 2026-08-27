@@ -59,9 +59,11 @@ def _redact(text: str, environment: Mapping[str, str]) -> str:
         upper = key.upper()
         if not value:
             continue
-        if key in _SECRET_NAMES or upper.endswith(("_TOKEN", "_SECRET", "_PASSWORD")):
-            redacted = redacted.replace(value, "[REDACTED]")
-        elif "PRIVATE_KEY" in upper:
+        if (
+            key in _SECRET_NAMES
+            or upper.endswith(("_TOKEN", "_SECRET", "_PASSWORD"))
+            or "PRIVATE_KEY" in upper
+        ):
             redacted = redacted.replace(value, "[REDACTED]")
     return redacted
 
