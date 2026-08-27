@@ -40,8 +40,8 @@ jobs:
       - name: Lint Python
         run: ruff check .
 
-      - name: Show Python formatting diff
-        run: ruff format --diff .
+      - name: Check Python formatting
+        run: ruff format --check .
 
       - name: Check Python types
         run: mypy scripts tests
