@@ -23,31 +23,24 @@ from scripts.orchestrator.state import StateStore, WorkflowState
 class ProposalGitHub(Protocol):
     """GitHub capabilities allowed to the deterministic proposal state machine."""
 
-    def project_snapshot(self) -> ProjectSnapshot:
-        ...
+    def project_snapshot(self) -> ProjectSnapshot: ...
 
-    def find_issue_by_marker(self, marker: str) -> IssueRef | None:
-        ...
+    def find_issue_by_marker(self, marker: str) -> IssueRef | None: ...
 
-    def create_issue(self, title: str, body: str) -> IssueRef:
-        ...
+    def create_issue(self, title: str, body: str) -> IssueRef: ...
 
-    def add_to_project(self, project_id: str, issue_node_id: str) -> str:
-        ...
+    def add_to_project(self, project_id: str, issue_node_id: str) -> str: ...
 
     def update_project_fields(
         self,
         project: ProjectSnapshot,
         item_id: str,
         values: dict[str, str | int],
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    def find_comment_by_marker(self, issue_number: int, marker: str) -> str | None:
-        ...
+    def find_comment_by_marker(self, issue_number: int, marker: str) -> str | None: ...
 
-    def add_comment(self, issue_number: int, body: str) -> str:
-        ...
+    def add_comment(self, issue_number: int, body: str) -> str: ...
 
 
 class ProposalWorkflow:
@@ -432,8 +425,7 @@ Canonical context data:
         scope_in = scope.get("in") if isinstance(scope, dict) else []
         scope_out = scope.get("out") if isinstance(scope, dict) else []
         generated_note = (
-            "Generated autonomously. Product approval is pending; "
-            "implementation is not authorized."
+            "Generated autonomously. Product approval is pending; implementation is not authorized."
         )
         return "\n".join(
             [
@@ -475,9 +467,7 @@ Canonical context data:
         )
         if completed.returncode != 0:
             detail = (completed.stdout + completed.stderr)[-2000:]
-            raise RuntimeError(
-                f"repository validation failed before agent execution: {detail}"
-            )
+            raise RuntimeError(f"repository validation failed before agent execution: {detail}")
 
     def _require_state(self, workflow_id: str) -> WorkflowState:
         state = self._state.get(workflow_id)
