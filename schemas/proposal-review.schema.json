@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/proposal-review.schema.json",
+  "title": "Business Analysis Proposal Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workflow_id",
+    "proposal_id",
+    "proposal_version",
+    "verdict",
+    "summary",
+    "duplicate_assessment",
+    "size_assessment",
+    "acceptance_criteria_results",
+    "decisions_required",
+    "required_revisions",
+    "context_refs",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "workflow_id": {"type": "string", "minLength": 1},
+    "proposal_id": {"type": "string", "pattern": "^FP-[0-9]{4,}$"},
+    "proposal_version": {"type": "integer", "minimum": 1},
+    "verdict": {"enum": ["accepted", "revision_required", "blocked"]},
+    "summary": {"type": "string", "minLength": 10},
+    "duplicate_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence"],
+      "properties": {
+        "status": {"enum": ["no_duplicate", "possible_duplicate", "duplicate"]},
+        "evidence": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "size_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "suggested_size", "reason"],
+      "properties": {
+        "status": {"enum": ["appropriate", "split_required"]},
+        "suggested_size": {"enum": ["XS", "S", "M", "L"]},
+        "reason": {"type": "string", "minLength": 5}
+      }
+    },
+    "acceptance_criteria_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion_id", "status", "feedback"],
+        "properties": {
+          "criterion_id": {"type": "string", "pattern": "^AC-[0-9]+$"},
+          "status": {"enum": ["testable", "not_testable"]},
+          "feedback": {"type": "string"}
+        }
+      }
+    },
+    "decisions_required": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 5}
+    },
+    "required_revisions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 5}
+    },
+    "context_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "agent_version", "generated_at"],
+      "properties": {
+        "role": {"const": "business_analysis"},
+        "agent_version": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "revision_required"}}},
+      "then": {"properties": {"required_revisions": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "accepted"}}},
+      "then": {
+        "properties": {
+          "required_revisions": {"maxItems": 0},
+          "duplicate_assessment": {
+            "properties": {"status": {"const": "no_duplicate"}}
+          },
+          "size_assessment": {
+            "properties": {"status": {"const": "appropriate"}}
+          },
+          "acceptance_criteria_results": {
+            "items": {"properties": {"status": {"const": "testable"}}}
+          }
+        }
+      }
+    }
+  ]
+}
