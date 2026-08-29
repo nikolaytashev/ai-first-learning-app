@@ -12,6 +12,20 @@ state:
   directory_env: ORCHESTRATOR_STATE_DIRECTORY
   default_directory: .orchestrator
 
+usage_guard:
+  enabled: true
+  query_timeout_seconds: 15
+  unavailable_policy: block
+  five_hour:
+    minimum_remaining_percent: 60
+    expected_window_minutes: 300
+    tolerance_minutes: 60
+    required: false
+  long_term:
+    minimum_remaining_percent: 40
+    minimum_window_minutes: 10080
+    required: true
+
 codex:
   executable: codex
   sandbox: read-only
