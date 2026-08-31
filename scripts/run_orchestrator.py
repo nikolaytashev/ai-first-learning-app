@@ -36,7 +36,7 @@ from scripts.orchestrator.usage_policy import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _print(value: dict[str, object]) -> None:
+def _print(value: object) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
 
