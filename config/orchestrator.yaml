@@ -12,6 +12,64 @@ state:
   directory_env: ORCHESTRATOR_STATE_DIRECTORY
   default_directory: .orchestrator
 
+usage_guard:
+  enabled: true
+  query_timeout_seconds: 15
+  unavailable_policy: block
+  five_hour:
+    enabled: true
+    minimum_remaining_percent: 60
+    expected_window_minutes: 300
+    tolerance_minutes: 60
+    required: false
+  long_term:
+    enabled: true
+    minimum_remaining_percent: 40
+    minimum_window_minutes: 10080
+    required: true
+
+autonomy:
+  schedule:
+    interval_minutes: 30
+    max_iterations_per_day: 8
+    working_hours:
+      enabled: true
+      timezone: Europe/Sofia
+      start: "09:00"
+      end: "22:00"
+  iteration_budget:
+    max_ai_requests: 12
+    max_tasks: 3
+    max_pull_requests: 1
+  priorities:
+    order:
+      - P0
+      - P1
+      - technical-debt
+      - enhancement
+    skip_labels:
+      - blocked
+      - human-required
+      - do-not-autonomy
+  stopping:
+    max_consecutive_failures: 3
+    stop_on_build_failure: true
+    stop_on_conflict: true
+    stop_on_blocking_pr: true
+    blocking_pr_labels:
+      - blocked
+      - autonomy-blocking
+  notifications:
+    enabled: true
+    provider: auto
+    webhook_url_env: ORCHESTRATOR_NOTIFICATION_WEBHOOK_URL
+    daily_report:
+      enabled: true
+      time: "21:00"
+    critical_error: true
+    usage_limit_stop: true
+    autonomy_stopped: true
+
 codex:
   executable: codex
   sandbox: read-only
