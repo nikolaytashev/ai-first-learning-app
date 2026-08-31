@@ -29,6 +29,36 @@ quota.
 The token thresholds are warnings. An absent or partial usage event must be
 recorded as unavailable or partial, never as zero.
 
+## Subscription reserve guard
+
+The checked-in defaults in `config/orchestrator.yaml` preserve capacity for
+interactive work on the same ChatGPT account:
+
+| Reserve | Default |
+| --- | ---: |
+| 5-hour minimum remaining | 60% |
+| Long-term minimum remaining | 40% |
+
+The 5-hour and long-term checks have independent `enabled` switches. The 5-hour
+window is optional by default because OpenAI may temporarily stop returning it.
+The long-term guard identifies windows by duration, so a weekly window can be
+replaced by a monthly window without changing the policy. Exactly 60%/40% is
+allowed; work is skipped only below the configured reserve.
+
+## Per-iteration hard budget
+
+Every real iteration uses hard counters before side effects are started:
+
+| Control | Default |
+| --- | ---: |
+| AI requests | 12 |
+| Tasks processed | 3 |
+| Pull Requests created | 1 |
+
+Failed and retried AI requests count. The current proposal workflow consumes one
+task and no Pull Request; the PR counter is already available for the future
+implementation workflow.
+
 ## Execution gates
 
 The proposal workflow may run when:
@@ -38,6 +68,7 @@ The proposal workflow may run when:
 - Repository validation passes.
 - The Product Manager and Business Analyst output schemas are implemented.
 - Usage and elapsed-time accounting are implemented.
+- Runtime scheduling, repository-health and iteration-budget gates permit work.
 
 The implementation workflow may run when:
 
@@ -61,6 +92,6 @@ The implementation workflow may run when:
 - Exceeding a warning requires an audit event but does not silently cancel a
   completed atomic action.
 - Budget changes require an allow-listed human and apply only to future runs
-  unless `/resume` explicitly reauthorizes a blocked workflow.
+  unless `resume` explicitly reauthorizes a blocked failure streak.
 - Critical profile selection requires an activation condition recorded in the
   action audit.
