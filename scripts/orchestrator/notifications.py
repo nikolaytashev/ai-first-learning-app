@@ -80,11 +80,7 @@ class Notifier:
     def _provider(self) -> str:
         if self._settings.provider != "auto":
             return self._settings.provider
-        return (
-            "webhook"
-            if self._environment.get(self._settings.webhook_url_env, "")
-            else "console"
-        )
+        return "webhook" if self._environment.get(self._settings.webhook_url_env, "") else "console"
 
     def _event_enabled(self, kind: str) -> bool:
         if not self._settings.enabled:

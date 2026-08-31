@@ -144,10 +144,13 @@ def test_stop_on_build_conflict_and_blocking_pr() -> None:
 
 def test_daily_report_becomes_due_at_configured_local_time() -> None:
     settings = load_runtime_policy_settings(root())
-    assert daily_report_due(
-        settings,
-        now_utc=datetime(2026, 8, 31, 18, 0, tzinfo=UTC),
-    ) is True
+    assert (
+        daily_report_due(
+            settings,
+            now_utc=datetime(2026, 8, 31, 18, 0, tzinfo=UTC),
+        )
+        is True
+    )
 
 
 def test_state_tracks_daily_limits_failure_streak_and_notifications(tmp_path: Path) -> None:

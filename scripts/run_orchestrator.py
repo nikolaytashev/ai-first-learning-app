@@ -239,9 +239,7 @@ def proposal() -> int:
         )
         if not decision.allowed:
             resets = ",".join(
-                str(limit.resets_at)
-                for limit in decision.limits
-                if limit.resets_at is not None
+                str(limit.resets_at) for limit in decision.limits if limit.resets_at is not None
             )
             event_suffix = resets or local_date
             _notify_once(

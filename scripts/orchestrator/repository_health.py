@@ -75,8 +75,7 @@ class RepositoryHealthChecker:
                         {
                             str(label.get("name")).casefold()
                             for label in labels_raw
-                            if isinstance(label, Mapping)
-                            and isinstance(label.get("name"), str)
+                            if isinstance(label, Mapping) and isinstance(label.get("name"), str)
                         }
                         if isinstance(labels_raw, list)
                         else set()
