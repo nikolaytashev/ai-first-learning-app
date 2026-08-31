@@ -61,7 +61,8 @@ class Notifier:
         )
         try:
             with urlopen(request, timeout=15) as response:
-                return 200 <= response.status < 300
+                status = response.status
+                return isinstance(status, int) and 200 <= status < 300
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             print(
                 json.dumps(
