@@ -22,7 +22,8 @@ are excluded. Matching is case-insensitive.
 
 The current proposal workflow generates one proposal rather than consuming an
 issue backlog, so priority selection is intentionally dormant until the
-implementation/task workflow exists.
+implementation/task workflow exists. It consumes one task-budget slot and does
+not consume a Pull Request slot.
 
 ## Stop policy
 
