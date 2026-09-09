@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/work-item-analysis.schema.json",
+  "title": "Work Item Analysis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workflow_id", "issue_number", "artifact_type", "revision", "change_classification", "title", "problem", "desired_outcome", "scope", "acceptance_criteria", "decisions_required", "priority", "size", "cancellation_reason", "provenance"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "workflow_id": {"type": "string", "minLength": 1},
+    "issue_number": {"type": "integer", "minimum": 1},
+    "artifact_type": {"enum": ["Epic", "Feature"]},
+    "revision": {"type": "integer", "minimum": 1},
+    "change_classification": {"enum": ["initial", "non_material", "material", "uncertain", "cancelled"]},
+    "title": {"type": "string", "minLength": 3, "maxLength": 160},
+    "problem": {"type": "string", "minLength": 1},
+    "desired_outcome": {"type": "string", "minLength": 1},
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["in", "out"],
+      "properties": {
+        "in": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "out": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "statement", "verification"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^AC-[0-9]+$"},
+          "statement": {"type": "string", "minLength": 5},
+          "verification": {"type": "string", "minLength": 3}
+        }
+      }
+    },
+    "decisions_required": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 3}},
+    "priority": {"enum": ["P0", "P1", "P2", "P3"]},
+    "size": {"enum": ["XS", "S", "M", "L"]},
+    "cancellation_reason": {"type": ["string", "null"]},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "agent_version", "generated_at"],
+      "properties": {
+        "role": {"const": "product_manager"},
+        "agent_version": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"change_classification": {"const": "uncertain"}}},
+      "then": {"properties": {"decisions_required": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"change_classification": {"const": "cancelled"}}},
+      "then": {"properties": {"cancellation_reason": {"type": "string", "minLength": 3}}}
+    }
+  ]
+}
