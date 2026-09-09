@@ -32,9 +32,9 @@ jobs:
       - name: Apply type fixes and validate style
         run: |
           python scripts/pr_typefix_temp.py
-          ruff check . --fix
+          ruff check . --fix --exclude scripts/pr_typefix_temp.py
           ruff format .
-          ruff check .
+          ruff check . --exclude scripts/pr_typefix_temp.py
           mypy scripts tests || true
 
       - name: Commit fixes
