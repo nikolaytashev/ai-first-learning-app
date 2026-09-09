@@ -35,7 +35,9 @@ jobs:
           printf '\nif __name__ == "__main__":\n    main()\n' >> /tmp/pr_github_app_patch.py
           python /tmp/pr_github_app_patch.py
           sed -i 's/;;;;/;;/g' scripts/orchestrator/implementation.py
-          ruff check . --fix --exclude scripts/pr_github_app_patch_temp.py
+          rm scripts/pr_github_app_patch_temp.py
+          rm .github/workflows/pr-github-app-patch.yml
+          ruff check . --fix
           ruff format .
 
       - name: Commit patch
