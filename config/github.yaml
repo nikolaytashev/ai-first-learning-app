@@ -8,9 +8,9 @@ repository:
 
 project:
   owner: nikolaytashev
-  number: null
-  url: null
-  configuration_status: decision_required
+  number: 1
+  url: https://github.com/users/nikolaytashev/projects/1
+  configuration_status: configured
   required_fields:
     Status:
       type: single_select
@@ -47,8 +47,8 @@ authorization:
   human_approvers:
     - nikolaytashev
   automation_login: null
-  automation_identity_type: null
-  automation_identity_status: decision_required
+  automation_identity_type: github_app
+  automation_identity_status: provisioning_required
   command_prefix: /orch
   accepted_commands:
     - analyze
@@ -98,6 +98,4 @@ automation_permissions:
     - change_visibility
 
 bootstrap_blockers:
-  - Configure project.number and project.url.
-  - Configure and provision the restricted automation identity outside the repository.
-  - Apply and verify the default-branch ruleset.
+  - Provision the repository-scoped GitHub App and inject its installation access token outside the repository.
