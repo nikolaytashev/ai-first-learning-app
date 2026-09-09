@@ -7,11 +7,13 @@ from pathlib import Path
 
 import pytest
 
+from scripts.orchestrator.config import load_config
 from scripts.orchestrator.github_auth import (
     GitHubAppTokenProvider,
     StaticGitHubTokenProvider,
     _outside_repository,
 )
+from scripts.validate_repository import ROOT
 
 
 class FakeGitHubAppTokenProvider(GitHubAppTokenProvider):
@@ -40,6 +42,11 @@ def test_static_token_provider_requires_token() -> None:
     assert StaticGitHubTokenProvider("configured-token").token() == "configured-token"
     with pytest.raises(ValueError, match="GITHUB_TOKEN"):
         StaticGitHubTokenProvider("").token()
+
+
+def test_repository_config_contains_github_app_client_id() -> None:
+    config = load_config(ROOT, {})
+    assert config.authorization.github_app_client_id == "Iv23ling22Lvmau5uLUJ"
 
 
 def test_github_app_token_is_cached_and_refreshed_before_expiry(
