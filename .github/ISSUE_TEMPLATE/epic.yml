@@ -1,0 +1,45 @@
+name: New epic
+description: Give the orchestrator a high-level outcome that may require multiple Features.
+title: "[Epic]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue becomes the canonical Epic. Product Manager and Business Analysis agents will analyze it and maintain its child Feature structure. Each Feature still requires its own current human product approval before implementation Tasks can run.
+
+  - type: textarea
+    id: request
+    attributes:
+      label: What outcome do you want?
+      description: Describe the larger product outcome or capability. The agents will decide whether and how it should be split into Features.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why / problem being solved
+      description: Optional user, product or business context.
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or important details
+      description: Optional boundaries, exclusions or decisions already made.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority override
+      options:
+        - Unspecified
+        - P0
+        - P1
+        - P2
+        - P3
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Optional related issues, screenshots, documents or links.
