@@ -44,6 +44,14 @@ def _optional_string(value: Any, label: str) -> str | None:
     return _string(value, label)
 
 
+def _string_list(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise ValueError(f"{label} must be a non-empty string list")
+    if not value:
+        raise ValueError(f"{label} must be a non-empty string list")
+    return tuple(cast(list[str], value))
+
+
 def _load_yaml(path: Path) -> Mapping[str, Any]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     return _mapping(raw, str(path))
@@ -141,6 +149,14 @@ def load_config(
         human_approvers=tuple(cast(list[str], approvers_raw)),
         automation_login=automation_login,
         automation_identity_type=identity_type,
+        command_prefix=_string(
+            authorization_raw.get("command_prefix", "/orch"),
+            "authorization.command_prefix",
+        ),
+        accepted_commands=_string_list(
+            authorization_raw.get("accepted_commands"),
+            "authorization.accepted_commands",
+        ),
     )
 
     branch_raw = _mapping(github.get("branch_policy"), "branch_policy")
@@ -218,12 +234,16 @@ def select_model(
     role: str,
     action: str,
     attempt: int,
+    *,
+    size: str | None = None,
+    risk: str | None = None,
 ) -> ModelSelection:
     """Select the lowest approved profile, escalating only after repeated failure."""
     defaults = _mapping(config.model_profiles.get("role_defaults"), "role_defaults")
     role_config = _mapping(defaults.get(role), f"role_defaults.{role}")
     profiles = _mapping(config.model_profiles.get("profiles"), "profiles")
     overrides = role_config.get("action_overrides")
+
     profile_name: str
     if isinstance(overrides, Mapping) and action in overrides:
         profile_name = _string(
@@ -231,15 +251,32 @@ def select_model(
             f"role_defaults.{role}.action_overrides.{action}",
         )
     else:
+        size_defaults = role_config.get("default_by_size")
+        if isinstance(size_defaults, Mapping):
+            resolved_size = size or "M"
+            profile_name = _string(
+                size_defaults.get(resolved_size),
+                f"role_defaults.{role}.default_by_size.{resolved_size}",
+            )
+        else:
+            profile_name = _string(
+                role_config.get("default"),
+                f"role_defaults.{role}.default",
+            )
+
+    risk_overrides = role_config.get("risk_overrides")
+    if risk is not None and isinstance(risk_overrides, Mapping) and risk in risk_overrides:
         profile_name = _string(
-            role_config.get("default"),
-            f"role_defaults.{role}.default",
+            risk_overrides[risk],
+            f"role_defaults.{role}.risk_overrides.{risk}",
         )
 
     allowed_raw = role_config.get("allowed_profiles")
     if not isinstance(allowed_raw, list) or not all(isinstance(item, str) for item in allowed_raw):
         raise ValueError(f"role_defaults.{role}.allowed_profiles must be a string list")
     allowed = cast(list[str], allowed_raw)
+    if profile_name not in allowed:
+        raise ValueError(f"profile {profile_name!r} is not allowed for role {role!r}")
     if attempt >= 3:
         current_index = allowed.index(profile_name)
         if current_index + 1 < len(allowed):
