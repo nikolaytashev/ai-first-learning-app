@@ -17,6 +17,7 @@ from scripts.orchestrator.config import load_config
 from scripts.orchestrator.control_plane import ControlPlaneWorkflow
 from scripts.orchestrator.github import GitHubClient
 from scripts.orchestrator.implementation import ImplementationWorkflow
+from scripts.orchestrator.model import OrchestratorConfig
 from scripts.orchestrator.notifications import Notifier
 from scripts.orchestrator.proposal import ProposalWorkflow, preflight_errors
 from scripts.orchestrator.repository_health import RepositoryHealthChecker
@@ -104,7 +105,7 @@ def _emit_daily_report_if_due(
     )
 
 
-def _trusted_github() -> tuple[object, RuntimePolicySettings, GitHubClient]:
+def _trusted_github() -> tuple[OrchestratorConfig, RuntimePolicySettings, GitHubClient]:
     config = load_config(ROOT)
     settings = load_runtime_policy_settings(ROOT)
     load_control_plane_settings(ROOT)

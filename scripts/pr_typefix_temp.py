@@ -29,25 +29,25 @@ def main() -> None:
         "scripts/orchestrator/control_plane.py",
         '        classification = analysis.get("change_classification")\n'
         '        impact = plan.get("approval_impact")\n'
-        '        required = {\n'
+        "        required = {\n"
         '            "initial": "invalidate",\n'
         '            "material": "invalidate",\n'
         '            "uncertain": "decision_required",\n'
         '            "cancelled": "cancel",\n'
-        '        }.get(classification)\n',
+        "        }.get(classification)\n",
         '        classification = analysis.get("change_classification")\n'
         '        impact = plan.get("approval_impact")\n'
-        '        required_by_classification = {\n'
+        "        required_by_classification = {\n"
         '            "initial": "invalidate",\n'
         '            "material": "invalidate",\n'
         '            "uncertain": "decision_required",\n'
         '            "cancelled": "cancel",\n'
-        '        }\n'
-        '        required = (\n'
-        '            required_by_classification.get(classification)\n'
-        '            if isinstance(classification, str)\n'
-        '            else None\n'
-        '        )\n',
+        "        }\n"
+        "        required = (\n"
+        "            required_by_classification.get(classification)\n"
+        "            if isinstance(classification, str)\n"
+        "            else None\n"
+        "        )\n",
     )
     replace(
         "scripts/orchestrator/control_plane.py",

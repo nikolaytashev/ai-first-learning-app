@@ -661,12 +661,17 @@ Canonical repository context:
                     )
         classification = analysis.get("change_classification")
         impact = plan.get("approval_impact")
-        required = {
+        required_by_classification = {
             "initial": "invalidate",
             "material": "invalidate",
             "uncertain": "decision_required",
             "cancelled": "cancel",
-        }.get(classification)
+        }
+        required = (
+            required_by_classification.get(classification)
+            if isinstance(classification, str)
+            else None
+        )
         if required is not None and impact != required:
             raise RuntimeError(f"BA approval impact must be {required!r} for {classification!r}")
 
@@ -781,7 +786,7 @@ Canonical repository context:
         for item in desired:
             child = resolved[cast(str, item["key"])]
             desired_blocker_ids = {
-                resolved[cast(str, key)].id for key in cast(list[str], item["dependencies"])
+                resolved[key].id for key in cast(list[str], item["dependencies"])
             }
             current_blockers = {
                 blocker.id: blocker for blocker in self._github.list_blockers(child.number)
