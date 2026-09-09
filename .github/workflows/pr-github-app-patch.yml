@@ -31,7 +31,10 @@ jobs:
 
       - name: Apply patch and formatting
         run: |
-          python scripts/pr_github_app_patch_temp.py
+          head -n -1 scripts/pr_github_app_patch_temp.py > /tmp/pr_github_app_patch.py
+          printf '\nif __name__ == "__main__":\n    main()\n' >> /tmp/pr_github_app_patch.py
+          python /tmp/pr_github_app_patch.py
+          sed -i 's/;;;;/;;/g' scripts/orchestrator/implementation.py
           ruff check . --fix --exclude scripts/pr_github_app_patch_temp.py
           ruff format .
 
