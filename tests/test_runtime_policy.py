@@ -15,6 +15,7 @@ from scripts.orchestrator.runtime_policy import (
     evaluate_schedule,
     evaluate_stop_conditions,
     order_work_items,
+    schedule_interval_minutes,
 )
 from scripts.orchestrator.runtime_state import RuntimeStateStore
 
@@ -25,9 +26,11 @@ def root() -> Path:
 
 def test_loads_checked_in_runtime_defaults() -> None:
     settings = load_runtime_policy_settings(root())
-    assert settings.schedule.interval_minutes == 30
-    assert settings.schedule.max_iterations_per_day == 8
-    assert settings.schedule.working_hours.timezone == "Europe/Sofia"
+    assert settings.schedule.default_interval_minutes == 30
+    assert settings.schedule.active_window.interval_minutes == 15
+    assert settings.schedule.active_window.start.isoformat(timespec="minutes") == "23:00"
+    assert settings.schedule.active_window.end.isoformat(timespec="minutes") == "07:00"
+    assert settings.schedule.timezone == "Europe/Sofia"
     assert settings.budget.max_ai_requests == 12
     assert settings.budget.max_tasks == 3
     assert settings.budget.max_pull_requests == 1
@@ -35,55 +38,57 @@ def test_loads_checked_in_runtime_defaults() -> None:
     assert settings.stopping.max_consecutive_failures == 3
 
 
-def test_schedule_blocks_before_interval_elapsed() -> None:
+def test_daytime_schedule_uses_default_30_minute_interval() -> None:
     settings = load_runtime_policy_settings(root())
-    now = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
-    decision = evaluate_schedule(
+    now = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)  # 13:00 Europe/Sofia
+    assert schedule_interval_minutes(settings, now_utc=now) == 30
+    blocked = evaluate_schedule(
         settings,
         now_utc=now,
         last_iteration_started_at=now - timedelta(minutes=29),
-        iterations_today=1,
+        iterations_today=100,
     )
-    assert decision.allowed is False
-    assert decision.reason == "iteration_interval_not_elapsed"
-
-
-def test_schedule_allows_after_interval_inside_working_hours() -> None:
-    settings = load_runtime_policy_settings(root())
-    now = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
-    decision = evaluate_schedule(
+    assert blocked.allowed is False
+    assert blocked.reason == "iteration_interval_not_elapsed"
+    allowed = evaluate_schedule(
         settings,
         now_utc=now,
         last_iteration_started_at=now - timedelta(minutes=30),
-        iterations_today=1,
+        iterations_today=100,
+    )
+    assert allowed.allowed is True
+
+
+def test_overnight_schedule_uses_faster_15_minute_interval() -> None:
+    settings = load_runtime_policy_settings(root())
+    now = datetime(2026, 8, 31, 21, 30, tzinfo=UTC)  # 00:30 Europe/Sofia
+    assert schedule_interval_minutes(settings, now_utc=now) == 15
+    blocked = evaluate_schedule(
+        settings,
+        now_utc=now,
+        last_iteration_started_at=now - timedelta(minutes=14),
+        iterations_today=500,
+    )
+    assert blocked.allowed is False
+    allowed = evaluate_schedule(
+        settings,
+        now_utc=now,
+        last_iteration_started_at=now - timedelta(minutes=15),
+        iterations_today=500,
+    )
+    assert allowed.allowed is True
+
+
+def test_schedule_has_no_working_hours_or_daily_iteration_cap() -> None:
+    settings = load_runtime_policy_settings(root())
+    dawn = datetime(2026, 8, 31, 4, 0, tzinfo=UTC)  # 07:00 Europe/Sofia
+    decision = evaluate_schedule(
+        settings,
+        now_utc=dawn,
+        last_iteration_started_at=None,
+        iterations_today=10000,
     )
     assert decision.allowed is True
-
-
-def test_schedule_blocks_outside_working_hours() -> None:
-    settings = load_runtime_policy_settings(root())
-    now = datetime(2026, 8, 31, 4, 0, tzinfo=UTC)
-    decision = evaluate_schedule(
-        settings,
-        now_utc=now,
-        last_iteration_started_at=None,
-        iterations_today=0,
-    )
-    assert decision.allowed is False
-    assert decision.reason == "outside_working_hours"
-
-
-def test_schedule_blocks_daily_iteration_cap() -> None:
-    settings = load_runtime_policy_settings(root())
-    now = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
-    decision = evaluate_schedule(
-        settings,
-        now_utc=now,
-        last_iteration_started_at=None,
-        iterations_today=8,
-    )
-    assert decision.allowed is False
-    assert decision.reason == "daily_iteration_limit_reached"
 
 
 def test_iteration_budget_is_hard_cap() -> None:
@@ -144,16 +149,13 @@ def test_stop_on_build_conflict_and_blocking_pr() -> None:
 
 def test_daily_report_becomes_due_at_configured_local_time() -> None:
     settings = load_runtime_policy_settings(root())
-    assert (
-        daily_report_due(
-            settings,
-            now_utc=datetime(2026, 8, 31, 18, 0, tzinfo=UTC),
-        )
-        is True
+    assert daily_report_due(
+        settings,
+        now_utc=datetime(2026, 8, 31, 18, 0, tzinfo=UTC),
     )
 
 
-def test_state_tracks_daily_limits_failure_streak_and_notifications(tmp_path: Path) -> None:
+def test_state_tracks_failures_budgets_and_notifications(tmp_path: Path) -> None:
     state = RuntimeStateStore(tmp_path)
     started = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
     first = state.start_iteration("2026-08-31", started)
