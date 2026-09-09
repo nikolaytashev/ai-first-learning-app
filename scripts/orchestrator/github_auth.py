@@ -52,7 +52,7 @@ class GitHubAppTokenProvider:
         now: Callable[[], datetime] | None = None,
     ) -> None:
         if not client_id:
-            raise ValueError("GITHUB_APP_CLIENT_ID is required for github_app")
+            raise ValueError("GitHub App Client ID is required for github_app")
         if not private_key_path.is_file():
             raise ValueError("GITHUB_APP_PRIVATE_KEY_PATH must point to an existing PEM file")
         if shutil.which("openssl") is None:
@@ -184,7 +184,7 @@ def load_github_token_provider(
     if identity_type != "github_app":
         raise ValueError("GITHUB_AUTOMATION_IDENTITY_TYPE is not configured")
 
-    client_id = env.get("GITHUB_APP_CLIENT_ID", "")
+    client_id = env.get("GITHUB_APP_CLIENT_ID") or config.authorization.github_app_client_id or ""
     key_path_raw = env.get("GITHUB_APP_PRIVATE_KEY_PATH", "")
     if not key_path_raw:
         raise ValueError("GITHUB_APP_PRIVATE_KEY_PATH is required for github_app")
