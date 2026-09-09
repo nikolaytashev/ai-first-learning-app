@@ -1,0 +1,73 @@
+name: Temporary doctor fix
+
+on:
+  push:
+    branches:
+      - fix/user-project-doctor
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/user-project-doctor
+          fetch-depth: 0
+
+      - name: Patch doctor project and timestamp checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/orchestrator/github.py')
+          text = path.read_text(encoding='utf-8')
+
+          text = text.replace(
+              'import json\nfrom dataclasses import dataclass\n',
+              'import json\nfrom dataclasses import dataclass\nfrom datetime import datetime\n',
+              1,
+          )
+
+          marker = '_GRAPHQL = "https://api.github.com/graphql"\n\n\n'
+          helpers = '''_GRAPHQL = "https://api.github.com/graphql"\n\n\ndef _project_owner_field(project_url: str | None) -> str:\n    """Resolve the GraphQL owner field from the canonical Project URL."""\n    if not project_url:\n        raise RuntimeError("GitHub Project URL is not configured")\n    if "/users/" in project_url:\n        return "user"\n    if "/orgs/" in project_url:\n        return "organization"\n    raise RuntimeError("GitHub Project URL must identify a user or organization Project")\n\n\ndef _same_instant(left: object, right: object) -> bool:\n    """Compare GitHub ISO-8601 timestamps by instant rather than raw formatting."""\n    if not isinstance(left, str) or not isinstance(right, str):\n        return False\n    try:\n        left_time = datetime.fromisoformat(left.replace("Z", "+00:00"))\n        right_time = datetime.fromisoformat(right.replace("Z", "+00:00"))\n    except ValueError:\n        return False\n    return left_time == right_time\n\n\n'''
+          if marker not in text:
+              raise SystemExit('GraphQL marker not found')
+          text = text.replace(marker, helpers, 1)
+
+          old_project = '''        query = """\n        query($login: String!, $number: Int!) {\n          user(login: $login) {\n            projectV2(number: $number) {\n              id url fields(first: 100) {\n                nodes {\n                  ... on ProjectV2Field { id name dataType }\n                  ... on ProjectV2IterationField { id name dataType }\n                  ... on ProjectV2SingleSelectField { id name dataType options { id name } }\n                }\n              }\n            }\n          }\n          organization(login: $login) {\n            projectV2(number: $number) {\n              id url fields(first: 100) {\n                nodes {\n                  ... on ProjectV2Field { id name dataType }\n                  ... on ProjectV2IterationField { id name dataType }\n                  ... on ProjectV2SingleSelectField { id name dataType options { id name } }\n                }\n              }\n            }\n          }\n        }\n        """\n        data = self._graphql(\n            query,\n            {"login": self._config.project.owner, "number": number},\n        )\n        owner = data.get("user") or data.get("organization")\n'''
+          new_project = '''        owner_field = _project_owner_field(self._config.project.url)\n        query = f"""\n        query($login: String!, $number: Int!) {{\n          {owner_field}(login: $login) {{\n            projectV2(number: $number) {{\n              id url fields(first: 100) {{\n                nodes {{\n                  ... on ProjectV2Field {{ id name dataType }}\n                  ... on ProjectV2IterationField {{ id name dataType }}\n                  ... on ProjectV2SingleSelectField {{ id name dataType options {{ id name }} }}\n                }}\n              }}\n            }}\n          }}\n        }}\n        """\n        data = self._graphql(\n            query,\n            {"login": self._config.project.owner, "number": number},\n        )\n        owner = data.get(owner_field)\n'''
+          if old_project not in text:
+              raise SystemExit('project snapshot block not found')
+          text = text.replace(old_project, new_project, 1)
+
+          old_timestamp = '''        updated_at = detail.get("updated_at")\n        expected_updated_at = self._config.branch_policy.verified_ruleset_updated_at\n        if updated_at != expected_updated_at:\n'''
+          new_timestamp = '''        updated_at = detail.get("updated_at")\n        expected_updated_at = self._config.branch_policy.verified_ruleset_updated_at\n        if not _same_instant(updated_at, expected_updated_at):\n'''
+          if old_timestamp not in text:
+              raise SystemExit('ruleset timestamp block not found')
+          text = text.replace(old_timestamp, new_timestamp, 1)
+
+          path.write_text(text, encoding='utf-8')
+
+          Path('tests/test_github_doctor.py').write_text('''"""Regression tests for GitHub doctor Project/ruleset verification helpers."""\n\nimport pytest\n\nfrom scripts.orchestrator.github import _project_owner_field, _same_instant\n\n\ndef test_user_project_url_selects_user_graphql_owner() -> None:\n    assert _project_owner_field("https://github.com/users/nikolaytashev/projects/1") == "user"\n\n\ndef test_organization_project_url_selects_organization_graphql_owner() -> None:\n    assert _project_owner_field("https://github.com/orgs/example/projects/1") == "organization"\n\n\ndef test_unknown_project_url_is_rejected() -> None:\n    with pytest.raises(RuntimeError, match="user or organization"):\n        _project_owner_field("https://github.com/projects/1")\n\n\ndef test_ruleset_timestamp_compares_same_instant_across_offsets() -> None:\n    assert _same_instant(\n        "2026-09-09T19:20:05.183+03:00",\n        "2026-09-09T16:20:05.183Z",\n    )\n\n\ndef test_ruleset_timestamp_detects_actual_change() -> None:\n    assert not _same_instant(\n        "2026-09-09T19:20:05.183+03:00",\n        "2026-09-09T16:21:05.183Z",\n    )\n''', encoding='utf-8')
+          PY
+
+          rm .github/workflows/temp-fix-doctor.yml
+
+      - name: Format and validate patch
+        run: |
+          python -m pip install -r requirements-dev.lock
+          ruff check scripts/orchestrator/github.py tests/test_github_doctor.py --fix
+          ruff format scripts/orchestrator/github.py tests/test_github_doctor.py
+          python -m pytest tests/test_github_doctor.py
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix doctor for user-owned GitHub Project"
+          git push origin HEAD:fix/user-project-doctor
