@@ -341,12 +341,14 @@ def _iteration() -> tuple[int, dict[str, object]]:
                 implementation.run_one_ready_task(),
             )
 
+        pr_outcomes_reconciled = implementation_result.get("pr_outcomes_reconciled", 0)
+        feature_checks = implementation_result.get("feature_checks", 0)
         worked = (
             control_result.reconciled > 0
             or control_result.commands > 0
             or implementation_result.get("status") not in {"idle", "skipped_schedule"}
-            or int(implementation_result.get("pr_outcomes_reconciled", 0) or 0) > 0
-            or int(implementation_result.get("feature_checks", 0) or 0) > 0
+            or (isinstance(pr_outcomes_reconciled, int) and pr_outcomes_reconciled > 0)
+            or (isinstance(feature_checks, int) and feature_checks > 0)
         )
         if worked:
             local_date = local_now(settings, now_utc).date().isoformat()
