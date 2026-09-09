@@ -38,6 +38,9 @@ Install the App on the `nikolaytashev` account with **Only select repositories**
 
 - `nikolaytashev/ai-first-learning-app`
 
+Provisioning is not considered complete until `doctor` successfully authenticates as the App and
+verifies the configured repository/Project/ruleset contracts.
+
 ## Local credentials
 
 The App Client ID is non-secret and is checked into `config/github.yaml`. The current configured
