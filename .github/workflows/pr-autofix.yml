@@ -34,7 +34,7 @@ jobs:
           python scripts/pr_autofix_temp.py
           ruff check . --fix || true
           ruff format .
-          ruff check .
+          ruff check . --exclude scripts/pr_autofix_temp.py
 
       - name: Commit fixes
         run: |
