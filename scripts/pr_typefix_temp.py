@@ -16,43 +16,24 @@ def replace(path: str, old: str, new: str) -> None:
 def main() -> None:
     replace(
         "scripts/run_orchestrator.py",
-        "from scripts.orchestrator.implementation import ImplementationWorkflow\n",
-        "from scripts.orchestrator.implementation import ImplementationWorkflow\n"
-        "from scripts.orchestrator.model import OrchestratorConfig\n",
-    )
-    replace(
-        "scripts/run_orchestrator.py",
-        "def _trusted_github() -> tuple[object, RuntimePolicySettings, GitHubClient]:\n",
-        "def _trusted_github() -> tuple[OrchestratorConfig, RuntimePolicySettings, GitHubClient]:\n",
-    )
-    replace(
-        "scripts/orchestrator/control_plane.py",
-        '        classification = analysis.get("change_classification")\n'
-        '        impact = plan.get("approval_impact")\n'
-        "        required = {\n"
-        '            "initial": "invalidate",\n'
-        '            "material": "invalidate",\n'
-        '            "uncertain": "decision_required",\n'
-        '            "cancelled": "cancel",\n'
-        "        }.get(classification)\n",
-        '        classification = analysis.get("change_classification")\n'
-        '        impact = plan.get("approval_impact")\n'
-        "        required_by_classification = {\n"
-        '            "initial": "invalidate",\n'
-        '            "material": "invalidate",\n'
-        '            "uncertain": "decision_required",\n'
-        '            "cancelled": "cancel",\n'
-        "        }\n"
-        "        required = (\n"
-        "            required_by_classification.get(classification)\n"
-        "            if isinstance(classification, str)\n"
-        "            else None\n"
-        "        )\n",
-    )
-    replace(
-        "scripts/orchestrator/control_plane.py",
-        '                resolved[cast(str, key)].id for key in cast(list[str], item["dependencies"])\n',
-        '                resolved[key].id for key in cast(list[str], item["dependencies"])\n',
+        '''        worked = (
+            control_result.reconciled > 0
+            or control_result.commands > 0
+            or implementation_result.get("status") not in {"idle", "skipped_schedule"}
+            or int(implementation_result.get("pr_outcomes_reconciled", 0) or 0) > 0
+            or int(implementation_result.get("feature_checks", 0) or 0) > 0
+        )
+''',
+        '''        pr_outcomes_reconciled = implementation_result.get("pr_outcomes_reconciled", 0)
+        feature_checks = implementation_result.get("feature_checks", 0)
+        worked = (
+            control_result.reconciled > 0
+            or control_result.commands > 0
+            or implementation_result.get("status") not in {"idle", "skipped_schedule"}
+            or (isinstance(pr_outcomes_reconciled, int) and pr_outcomes_reconciled > 0)
+            or (isinstance(feature_checks, int) and feature_checks > 0)
+        )
+''',
     )
 
 
