@@ -113,7 +113,7 @@ Ready Task
 → independent QA
 → independent Reviewer
 → bounded corrective cycles when required
-→ push non-default branch as the restricted GitHub App
+→ push non-default branch
 → draft pull request
 → human merge
 ```
@@ -145,21 +145,6 @@ Codex usage reserve remains a hard gate for agent work:
 
 Per-iteration AI/task/PR budgets and repository/failure stop conditions remain enforced independently
 of the time-of-day cadence.
-
-## GitHub App runtime identity
-
-The preferred automation identity is a repository-scoped GitHub App. The long-lived secret is the
-App PEM private key, stored outside the repository. The local orchestrator signs a short-lived App
-JWT, discovers the installation, mints an installation access token and refreshes it automatically
-before expiration. Installation tokens are kept only in process memory.
-
-The same restricted App token is used for GitHub REST/GraphQL operations and for autonomous Git
-pushes through a temporary `GIT_ASKPASS` helper. This prevents autonomous pushes from silently using
-the human owner's local Git credentials.
-
-Required GitHub App permissions are documented in
-[`docs/autonomy/local-operation.md`](docs/autonomy/local-operation.md). The App must be installed only
-on `nikolaytashev/ai-first-learning-app` and must not receive repository Administration permission.
 
 ## Local orchestrator commands
 
@@ -204,7 +189,6 @@ ruff check .
 ruff format --check .
 mypy scripts tests
 pytest
-openssl version
 ```
 
 The validation script checks YAML/JSON syntax, JSON Schema definitions, context-index references,
@@ -212,21 +196,17 @@ local Markdown links, issue forms and required repository files.
 
 ## Bootstrap sequence
 
-1. Ensure Project #1 contains all fields/options in `config/github.yaml`, including `Origin` with
-   `Human` and `Agent` options.
-2. Create the restricted GitHub App and grant only the permissions documented in
-   `docs/autonomy/local-operation.md`.
-3. Install the App on the personal account with repository access limited to
-   `nikolaytashev/ai-first-learning-app`.
-4. Copy the App Client ID and generate a private key. Store the PEM outside the repository with
-   restrictive filesystem permissions.
-5. Export `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_PRIVATE_KEY_PATH`. The installation ID is optional
-   because the orchestrator can discover it from the configured repository.
-6. Keep the active no-bypass `Protect main` ruleset unchanged. A human-verified ruleset ID and
-   `updated_at` fingerprint are pinned in `config/github.yaml`; any ruleset change blocks `doctor`.
-7. Install and authenticate Codex CLI on the local machine.
-8. Run `python scripts/run_orchestrator.py doctor` until it reports `ready`.
-9. Optionally run `python scripts/run_orchestrator.py iteration` for one controlled pass.
-10. Start `python scripts/run_orchestrator.py run` for continuous GitHub-controlled operation.
-11. From then on, create Epic/Feature Issues and use their comments plus `/orch` commands to direct
+1. Configure the GitHub Project number and URL.
+2. Ensure the Project contains all fields/options in `config/github.yaml`, including the new
+   `Origin` single-select field with `Human` and `Agent` options.
+3. Create/install the repository-scoped GitHub App using `docs/autonomy/github-app-setup.md`.
+4. Keep the active no-bypass `Protect main` ruleset with PR requirement, conversation resolution,
+   deletion/force-push protection and required `repository-validation` check.
+5. Install and authenticate Codex CLI on the local machine.
+6. Keep the GitHub App private key outside the repository and set only
+   `GITHUB_APP_PRIVATE_KEY_PATH`; the non-secret Client ID is checked into `config/github.yaml`.
+7. Run `python scripts/run_orchestrator.py doctor` until it reports `ready`.
+8. Optionally run `python scripts/run_orchestrator.py iteration` for one controlled pass.
+9. Start `python scripts/run_orchestrator.py run` for continuous GitHub-controlled operation.
+10. From then on, create Epic/Feature Issues and use their comments plus `/orch` commands to direct
     product work.
