@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, cast
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -24,6 +25,29 @@ from scripts.orchestrator.model import (
 
 _API = "https://api.github.com"
 _GRAPHQL = "https://api.github.com/graphql"
+
+
+def _project_owner_field(project_url: str | None) -> str:
+    """Resolve the GraphQL owner field from the canonical Project URL."""
+    if not project_url:
+        raise RuntimeError("GitHub Project URL is not configured")
+    if "/users/" in project_url:
+        return "user"
+    if "/orgs/" in project_url:
+        return "organization"
+    raise RuntimeError("GitHub Project URL must identify a user or organization Project")
+
+
+def _same_instant(left: object, right: object) -> bool:
+    """Compare GitHub ISO-8601 timestamps by instant rather than raw formatting."""
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+    try:
+        left_time = datetime.fromisoformat(left.replace("Z", "+00:00"))
+        right_time = datetime.fromisoformat(right.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return left_time == right_time
 
 
 @dataclass(frozen=True)
@@ -224,37 +248,27 @@ class GitHubClient:
         number = self._config.project.number
         if number is None:
             raise RuntimeError("GitHub Project number is not configured")
-        query = """
-        query($login: String!, $number: Int!) {
-          user(login: $login) {
-            projectV2(number: $number) {
-              id url fields(first: 100) {
-                nodes {
-                  ... on ProjectV2Field { id name dataType }
-                  ... on ProjectV2IterationField { id name dataType }
-                  ... on ProjectV2SingleSelectField { id name dataType options { id name } }
-                }
-              }
-            }
-          }
-          organization(login: $login) {
-            projectV2(number: $number) {
-              id url fields(first: 100) {
-                nodes {
-                  ... on ProjectV2Field { id name dataType }
-                  ... on ProjectV2IterationField { id name dataType }
-                  ... on ProjectV2SingleSelectField { id name dataType options { id name } }
-                }
-              }
-            }
-          }
-        }
+        owner_field = _project_owner_field(self._config.project.url)
+        query = f"""
+        query($login: String!, $number: Int!) {{
+          {owner_field}(login: $login) {{
+            projectV2(number: $number) {{
+              id url fields(first: 100) {{
+                nodes {{
+                  ... on ProjectV2Field {{ id name dataType }}
+                  ... on ProjectV2IterationField {{ id name dataType }}
+                  ... on ProjectV2SingleSelectField {{ id name dataType options {{ id name }} }}
+                }}
+              }}
+            }}
+          }}
+        }}
         """
         data = self._graphql(
             query,
             {"login": self._config.project.owner, "number": number},
         )
-        owner = data.get("user") or data.get("organization")
+        owner = data.get(owner_field)
         project = owner.get("projectV2") if isinstance(owner, dict) else None
         if not isinstance(project, dict):
             raise RuntimeError("configured GitHub Project was not found")
@@ -377,7 +391,7 @@ class GitHubClient:
             return errors
         updated_at = detail.get("updated_at")
         expected_updated_at = self._config.branch_policy.verified_ruleset_updated_at
-        if updated_at != expected_updated_at:
+        if not _same_instant(updated_at, expected_updated_at):
             errors.append(
                 "verified ruleset changed after human no-bypass verification; "
                 "re-verify it and update branch_policy.verified_ruleset_updated_at"
