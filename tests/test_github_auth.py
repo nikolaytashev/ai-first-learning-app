@@ -46,7 +46,10 @@ def test_github_app_token_is_cached_and_refreshed_before_expiry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("scripts.orchestrator.github_auth.shutil.which", lambda _: "/usr/bin/openssl")
+    monkeypatch.setattr(
+        "scripts.orchestrator.github_auth.shutil.which",
+        lambda _: "/usr/bin/openssl",
+    )
     key = tmp_path / "app.pem"
     key.write_text("test-only-placeholder", encoding="utf-8")
     clock = [datetime(2026, 9, 9, 12, 0, tzinfo=UTC)]
