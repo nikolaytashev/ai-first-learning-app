@@ -18,9 +18,7 @@ def main() -> None:
         "scripts/orchestrator/control_plane.py",
         "                if isinstance(artifact_type, str) and isinstance(origin, str):\n"
         '                    if artifact_type in {"Epic", "Feature", "Task"}:\n'
-        "                        result.append(\n"
-        "                            ManagedIssue(issue, artifact_type, origin, metadata)\n"
-        "                        )\n",
+        "                        result.append(ManagedIssue(issue, artifact_type, origin, metadata))\n",
         "                if (\n"
         "                    isinstance(artifact_type, str)\n"
         "                    and isinstance(origin, str)\n"
