@@ -145,10 +145,19 @@ def load_config(
     )
     if identity_type not in {None, "github_app", "restricted_bot"}:
         raise ValueError("GITHUB_AUTOMATION_IDENTITY_TYPE must be github_app or restricted_bot")
+    github_app_client_id = _env_or(
+        _optional_string(
+            authorization_raw.get("github_app_client_id"),
+            "authorization.github_app_client_id",
+        ),
+        "GITHUB_APP_CLIENT_ID",
+        env,
+    )
     authorization = AuthorizationSettings(
         human_approvers=tuple(cast(list[str], approvers_raw)),
         automation_login=automation_login,
         automation_identity_type=identity_type,
+        github_app_client_id=github_app_client_id,
         command_prefix=_string(
             authorization_raw.get("command_prefix", "/orch"),
             "authorization.command_prefix",
