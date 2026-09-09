@@ -135,6 +135,8 @@ class BranchPolicySettings:
 
     protected_branches: tuple[str, ...]
     required_status_checks: tuple[str, ...]
+    verified_ruleset_id: int
+    verified_ruleset_updated_at: str
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import sys
 import time
 from datetime import UTC, datetime
@@ -16,6 +15,7 @@ from scripts.orchestrator.codex import CodexCliRunner
 from scripts.orchestrator.config import load_config
 from scripts.orchestrator.control_plane import ControlPlaneWorkflow
 from scripts.orchestrator.github import GitHubClient
+from scripts.orchestrator.github_auth import load_github_token_provider
 from scripts.orchestrator.implementation import ImplementationWorkflow
 from scripts.orchestrator.model import OrchestratorConfig
 from scripts.orchestrator.notifications import Notifier
@@ -111,10 +111,8 @@ def _trusted_github() -> tuple[OrchestratorConfig, RuntimePolicySettings, GitHub
     load_control_plane_settings(ROOT)
     load_implementation_settings(ROOT)
     load_usage_guard_settings(ROOT)
-    token = os.environ.get("GITHUB_TOKEN", "")
-    if not token:
-        raise ValueError("GITHUB_TOKEN is required from an external secret provider")
-    github = GitHubClient(config, token)
+    token_provider = load_github_token_provider(config, root=ROOT)
+    github = GitHubClient(config, token_provider)
     errors = preflight_errors(ROOT, config, github)
     if errors:
         raise RuntimeError("; ".join(errors))
@@ -297,7 +295,7 @@ def _iteration() -> tuple[int, dict[str, object]]:
 
         repository_health = RepositoryHealthChecker(
             config,
-            os.environ.get("GITHUB_TOKEN", ""),
+            github.token_provider,
         ).read(settings.stopping)
         repository_stop = evaluate_stop_conditions(
             settings.stopping,

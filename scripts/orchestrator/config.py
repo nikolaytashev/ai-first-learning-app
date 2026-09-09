@@ -171,6 +171,14 @@ def load_config(
     branch_policy = BranchPolicySettings(
         protected_branches=tuple(cast(list[str], protected_raw)),
         required_status_checks=tuple(cast(list[str], checks_raw)),
+        verified_ruleset_id=_int(
+            branch_raw.get("verified_ruleset_id"),
+            "branch_policy.verified_ruleset_id",
+        ),
+        verified_ruleset_updated_at=_string(
+            branch_raw.get("verified_ruleset_updated_at"),
+            "branch_policy.verified_ruleset_updated_at",
+        ),
     )
 
     proposal_raw = _mapping(runtime_raw.get("proposal_workflow"), "proposal_workflow")

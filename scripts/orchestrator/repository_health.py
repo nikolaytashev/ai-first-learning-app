@@ -9,6 +9,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from scripts.orchestrator.github_auth import (
+    GitHubTokenProvider,
+    StaticGitHubTokenProvider,
+)
 from scripts.orchestrator.model import OrchestratorConfig
 from scripts.orchestrator.runtime_config import StoppingSettings
 from scripts.orchestrator.runtime_policy import RepositoryHealthSnapshot
@@ -20,11 +24,13 @@ _SUCCESSFUL_CHECK_CONCLUSIONS = {"success", "neutral", "skipped"}
 class RepositoryHealthChecker:
     """Read build and open-PR conditions from GitHub without mutating the repository."""
 
-    def __init__(self, config: OrchestratorConfig, token: str) -> None:
-        if not token:
-            raise ValueError("GITHUB_TOKEN is required")
+    def __init__(
+        self,
+        config: OrchestratorConfig,
+        token: str | GitHubTokenProvider,
+    ) -> None:
         self._config = config
-        self._token = token
+        self._token_provider = StaticGitHubTokenProvider(token) if isinstance(token, str) else token
 
     def _read(self, method: str, url: str) -> Any:
         request = Request(
@@ -32,7 +38,7 @@ class RepositoryHealthChecker:
             method=method,
             headers={
                 "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self._token}",
+                "Authorization": f"Bearer {self._token_provider.token()}",
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": "ai-first-learning-local-orchestrator",
             },
