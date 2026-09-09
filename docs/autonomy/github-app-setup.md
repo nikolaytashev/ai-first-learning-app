@@ -40,11 +40,14 @@ Install the App on the `nikolaytashev` account with **Only select repositories**
 
 ## Local credentials
 
+The App Client ID is non-secret and is checked into `config/github.yaml`. The current configured
+Client ID is `Iv23ling22Lvmau5uLUJ`. `GITHUB_APP_CLIENT_ID` remains available only as an optional
+local override.
+
 After creating the App:
 
-1. Copy its Client ID. The Client ID is not secret.
-2. Generate one private key from the App settings page.
-3. Move the downloaded PEM outside the repository, for example:
+1. Generate one private key from the App settings page.
+2. Move the downloaded PEM outside the repository, for example:
 
    ```bash
    mkdir -p ~/.config/ai-first-learning
@@ -52,10 +55,9 @@ After creating the App:
    chmod 600 ~/.config/ai-first-learning/github-app.pem
    ```
 
-4. Configure the trusted orchestrator shell/service:
+3. Configure the trusted orchestrator shell/service:
 
    ```bash
-   export GITHUB_APP_CLIENT_ID="<client-id>"
    export GITHUB_APP_PRIVATE_KEY_PATH="$HOME/.config/ai-first-learning/github-app.pem"
    ```
 
