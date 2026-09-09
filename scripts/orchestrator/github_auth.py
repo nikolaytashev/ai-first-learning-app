@@ -88,7 +88,9 @@ class GitHubAppTokenProvider:
         )
         installation_id = raw.get("id") if isinstance(raw, dict) else None
         if not isinstance(installation_id, int) or installation_id < 1:
-            raise RuntimeError("GitHub App installation was not found for the configured repository")
+            raise RuntimeError(
+                "GitHub App installation was not found for the configured repository"
+            )
         return installation_id
 
     def _mint_installation_token(self, installation_id: int) -> tuple[str, datetime]:
@@ -126,7 +128,9 @@ class GitHubAppTokenProvider:
             with urlopen(request, timeout=30) as response:
                 body = response.read().decode("utf-8")
         except (HTTPError, URLError, TimeoutError) as exc:
-            raise RuntimeError(f"GitHub App authentication request failed: {method} {path}") from exc
+            raise RuntimeError(
+                f"GitHub App authentication request failed: {method} {path}"
+            ) from exc
         return None if not body else json.loads(body)
 
     def _jwt(self) -> str:
