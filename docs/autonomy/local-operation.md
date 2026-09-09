@@ -23,10 +23,10 @@ Before autonomous execution, the human owner must configure:
 
 - GitHub Project number and canonical URL;
 - every Project field/option declared in `config/github.yaml`, including `Origin = Human|Agent`;
-- restricted automation identity and external credential provider;
+- repository-scoped GitHub App installation and its private key outside the repository;
 - active no-bypass repository ruleset protecting `main`;
 - local Codex CLI session authenticated through the approved provider;
-- local Git credentials capable of pushing only the intended non-default repository branches.
+- OpenSSL available to sign short-lived GitHub App JWTs.
 
 The orchestrator verifies trusted GitHub/project/ruleset conditions with `doctor` and fails closed
 when it cannot prove them.
@@ -35,17 +35,58 @@ when it cannot prove them.
 
 `GITHUB_AUTOMATION_IDENTITY_TYPE` must be one of:
 
-- `github_app` — `GITHUB_TOKEN` is a repository-scoped GitHub App installation access token;
-- `restricted_bot` — `GITHUB_TOKEN` belongs to the configured dedicated bot account and its login
-  exactly matches `GITHUB_AUTOMATION_LOGIN`.
+- `github_app` — preferred. The trusted process signs a GitHub App JWT, resolves the installation
+  for the configured repository, mints an installation access token and automatically refreshes it
+  before expiration;
+- `restricted_bot` — compatibility mode. `GITHUB_TOKEN` belongs to the configured dedicated bot
+  account and its login exactly matches `GITHUB_AUTOMATION_LOGIN`.
 
-A GitHub App is preferred for long-lived automation because installation can be repository-scoped
-and installation access tokens are short-lived. Token creation/refresh belongs to the external
-secret provider. Raw credentials must never be stored in the repository or forwarded to Codex.
+For `github_app`, configure:
 
-The identity needs issue/comment/Project/sub-issue/dependency and draft-PR write permissions plus
-repository/rules read access. It must not have merge, release, deployment, secret, ruleset,
-collaborator or visibility-management authority.
+```text
+GITHUB_APP_CLIENT_ID
+GITHUB_APP_PRIVATE_KEY_PATH
+GITHUB_APP_INSTALLATION_ID  # optional; repository installation is auto-discovered when omitted
+```
+
+The Client ID and installation ID are not secrets. The PEM private key is a long-lived credential:
+it must live outside the repository, should be readable only by the orchestrator OS user, and must
+never be forwarded to Codex. A private-key path resolving inside the repository is rejected.
+
+Installation access tokens are cached in process memory and renewed automatically. They are never
+written to disk. The same restricted GitHub App identity is used for REST/GraphQL operations and
+for autonomous `git push`, so the worker does not silently fall back to the human owner's local Git
+credentials.
+
+## Required GitHub App permissions
+
+Grant only the permissions required by the orchestrator:
+
+Repository permissions:
+
+- Contents: Read and write — read repository state and push `agent/*` branches;
+- Issues: Read and write — issues, comments, sub-issues and issue dependencies;
+- Pull requests: Read and write — create/update/close the orchestrator's draft PRs;
+- Checks: Read-only — inspect `repository-validation` check runs;
+- Metadata: Read-only — repository metadata, active branch rules and ruleset fingerprint.
+
+Projects permission:
+
+- Projects: Read and write — read/update Project V2 items and fields.
+
+Do not grant Administration, Actions write, Deployments, Secrets, Environments, Members or other
+unrelated write permissions. Install the App only on `nikolaytashev/ai-first-learning-app`.
+
+## Ruleset verification without Administration permission
+
+The App is intentionally not granted repository Administration permission. The human owner verifies
+the no-bypass ruleset with owner access and checks its ID plus `updated_at` fingerprint into
+`config/github.yaml`.
+
+`doctor` still verifies the effective `main` branch rules through the rules API. It also reads the
+pinned ruleset. Any later ruleset mutation changes `updated_at`, causing `doctor` to fail closed
+until a human re-verifies the ruleset and updates the fingerprint. If the API exposes
+`bypass_actors`, any non-empty bypass list is also rejected directly.
 
 ## Runtime environment
 
@@ -57,11 +98,15 @@ GITHUB_PROJECT_NUMBER
 GITHUB_PROJECT_URL
 GITHUB_AUTOMATION_LOGIN
 GITHUB_AUTOMATION_IDENTITY_TYPE
+GITHUB_APP_CLIENT_ID
+GITHUB_APP_INSTALLATION_ID
 ORCHESTRATOR_STATE_DIRECTORY
 ```
 
-`GITHUB_TOKEN` is secret and must be injected by an external secret provider/environment. Do not
-put it in `.env`, command-line arguments, prompts, logs or the worktree.
+`GITHUB_APP_PRIVATE_KEY_PATH` points to the external PEM file and should be supplied only to the
+trusted orchestrator process. `GITHUB_TOKEN` is used only by the legacy `restricted_bot` mode.
+Do not put raw tokens or private-key contents in `.env`, command-line arguments, prompts, logs or a
+worktree.
 
 The Codex child environment strips GitHub/provider secrets, token-like variables, password-like
 variables and private-key material.
@@ -79,6 +124,7 @@ ruff check .
 ruff format --check .
 mypy scripts tests
 pytest
+openssl version
 ```
 
 Install/authenticate Codex CLI separately.
@@ -96,11 +142,11 @@ python scripts/run_orchestrator.py doctor
 - local checkout is clean `main`;
 - Codex CLI is available;
 - Project and automation identity configuration is present;
-- restricted GitHub credential matches its configured identity mode;
+- the GitHub App can mint an installation token and is installed only for the configured repository;
 - Project fields/options match the contract;
 - active `main` rules require PRs, conversation resolution, `repository-validation`,
   non-fast-forward protection and deletion protection;
-- active repository ruleset has no bypass actors;
+- the human-verified ruleset fingerprint is unchanged;
 - GitHub and runtime command prefixes agree.
 
 Resolve every blocked preflight result before starting continuous work.
@@ -153,8 +199,9 @@ review, then rechecks the Task and parent Feature approval digest before commit 
 push. If the Feature changed materially while an atomic action was running, the Task becomes stale
 and publication stops.
 
-Git push uses the local Git credential mechanism with terminal prompting disabled. Never embed
-`GITHUB_TOKEN` in a remote URL, command argument, prompt or agent environment.
+For push, the trusted process requests a current installation token and supplies it to Git only via
+a short-lived `GIT_ASKPASS` helper stored in the ignored orchestrator state directory. The token is
+not embedded in the remote URL or command line; the helper is deleted immediately after the push.
 
 ## Restart and recovery behaviour
 
