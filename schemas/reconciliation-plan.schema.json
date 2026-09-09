@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/reconciliation-plan.schema.json",
+  "title": "Project Reconciliation Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workflow_id", "parent_issue_number", "parent_type", "approval_impact", "desired_children", "supersede_existing", "summary", "provenance"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "workflow_id": {"type": "string", "minLength": 1},
+    "parent_issue_number": {"type": "integer", "minimum": 1},
+    "parent_type": {"enum": ["Epic", "Feature"]},
+    "approval_impact": {"enum": ["unchanged", "invalidate", "decision_required", "cancel"]},
+    "desired_children": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "type", "existing_issue_number", "title", "description", "acceptance_criteria", "priority", "size", "risk", "dependencies"],
+        "properties": {
+          "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
+          "type": {"enum": ["Feature", "Task"]},
+          "existing_issue_number": {"type": ["integer", "null"], "minimum": 1},
+          "title": {"type": "string", "minLength": 3, "maxLength": 160},
+          "description": {"type": "string", "minLength": 3},
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 3}
+          },
+          "priority": {"enum": ["P0", "P1", "P2", "P3"]},
+          "size": {"enum": ["XS", "S", "M", "L"]},
+          "risk": {"enum": ["low", "medium", "high", "critical"]},
+          "dependencies": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"}
+          }
+        }
+      }
+    },
+    "supersede_existing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issue_number", "reason"],
+        "properties": {
+          "issue_number": {"type": "integer", "minimum": 1},
+          "reason": {"type": "string", "minLength": 3}
+        }
+      }
+    },
+    "summary": {"type": "string", "minLength": 3},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "agent_version", "generated_at"],
+      "properties": {
+        "role": {"const": "business_analysis"},
+        "agent_version": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

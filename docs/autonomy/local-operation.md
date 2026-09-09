@@ -1,57 +1,56 @@
 # Local Orchestrator Operation
 
-## Current execution scope
+## Execution scope
 
-The checked-in orchestrator implements the bootstrap **proposal workflow only**.
-It may run the Product Manager and Business Analysis roles, validate their
-structured output, create an idempotent GitHub feature-proposal issue, attach it
-to the configured GitHub Project, publish audit evidence and stop at the human
-approval gate.
+The checked-in orchestrator supports a GitHub-driven control plane and bounded Task delivery:
 
-It does not implement an approved issue. Worktree creation, implementation, QA,
-review, corrective cycles and draft pull-request creation remain disabled until
-the implementation workflow is added and independently validated.
+- human-created canonical Epic/Feature intake;
+- PM product analysis and change classification;
+- BA desired-state decomposition/reconciliation;
+- native GitHub sub-issue hierarchy and blocked-by dependencies;
+- namespaced `/orch` commands and normal human-comment product input;
+- material-change approval invalidation and stale-work prevention;
+- one Task per isolated `agent/*` branch/worktree;
+- Implementer, deterministic validation, independent QA and Reviewer;
+- bounded corrective cycles and draft PR creation;
+- human-only PR merge and Feature-level completion QA.
+
+The worker never merges, deploys, releases, edits rulesets or manages secrets.
 
 ## Trusted prerequisites
 
-Before autonomous proposal execution, the human owner must configure:
+Before autonomous execution, the human owner must configure:
 
-- The GitHub Project number and canonical URL.
-- Every Project field and option declared in `config/github.yaml`.
-- A restricted automation identity and its external credential provider.
-- An active repository ruleset protecting `main` with no bypass actors.
-- A local Codex CLI session authenticated through the approved provider.
+- GitHub Project number and canonical URL;
+- every Project field/option declared in `config/github.yaml`, including `Origin = Human|Agent`;
+- restricted automation identity and external credential provider;
+- active no-bypass repository ruleset protecting `main`;
+- local Codex CLI session authenticated through the approved provider;
+- local Git credentials capable of pushing only the intended non-default repository branches.
 
-The orchestrator verifies these conditions at runtime and fails closed when it
-cannot prove them.
+The orchestrator verifies trusted GitHub/project/ruleset conditions with `doctor` and fails closed
+when it cannot prove them.
 
 ## Automation identity
 
 `GITHUB_AUTOMATION_IDENTITY_TYPE` must be one of:
 
-- `github_app` — `GITHUB_TOKEN` is a GitHub App installation access token. The
-  installation token must expose exactly this repository and no others. The
-  configured automation login is retained as the expected identity label for
-  audit/configuration; repository scope is verified from GitHub before work.
-- `restricted_bot` — `GITHUB_TOKEN` belongs to the configured dedicated bot
-  account. The authenticated GitHub login must exactly match
-  `GITHUB_AUTOMATION_LOGIN`.
+- `github_app` — `GITHUB_TOKEN` is a repository-scoped GitHub App installation access token;
+- `restricted_bot` — `GITHUB_TOKEN` belongs to the configured dedicated bot account and its login
+  exactly matches `GITHUB_AUTOMATION_LOGIN`.
 
-A GitHub App is preferred for long-lived automation because its installation can
-be repository-scoped and its installation access tokens are short-lived. Token
-creation and refresh belong to the external secret provider; raw credentials
-must never be stored in this repository or exposed to Codex subprocesses.
+A GitHub App is preferred for long-lived automation because installation can be repository-scoped
+and installation access tokens are short-lived. Token creation/refresh belongs to the external
+secret provider. Raw credentials must never be stored in the repository or forwarded to Codex.
 
-The automation identity needs only the permissions required by
-`config/github.yaml`. Reading active branch rules also requires read access to
-repository administration metadata. Do not grant ruleset write, merge, release,
-deployment, secret-management, collaborator-management or visibility-management
-permissions.
+The identity needs issue/comment/Project/sub-issue/dependency and draft-PR write permissions plus
+repository/rules read access. It must not have merge, release, deployment, secret, ruleset,
+collaborator or visibility-management authority.
 
 ## Runtime environment
 
-The non-secret identifiers may be configured in `config/github.yaml` or supplied
-as environment overrides:
+Non-secret identifiers may be configured in `config/github.yaml` or supplied as environment
+overrides:
 
 ```text
 GITHUB_PROJECT_NUMBER
@@ -61,13 +60,15 @@ GITHUB_AUTOMATION_IDENTITY_TYPE
 ORCHESTRATOR_STATE_DIRECTORY
 ```
 
-`GITHUB_TOKEN` is secret and must be injected by the external secret provider.
-Do not put it in `.env`, command-line arguments, prompts, logs or the Git
-worktree.
+`GITHUB_TOKEN` is secret and must be injected by an external secret provider/environment. Do not
+put it in `.env`, command-line arguments, prompts, logs or the worktree.
+
+The Codex child environment strips GitHub/provider secrets, token-like variables, password-like
+variables and private-key material.
 
 ## Local bootstrap
 
-Use Python 3.12 or later. Run from a clean checkout of `main`:
+Use Python 3.12 or later from a clean checkout of `main`:
 
 ```bash
 python -m venv .venv
@@ -80,10 +81,7 @@ mypy scripts tests
 pytest
 ```
 
-Install Codex CLI separately and authenticate it before running the worker.
-The orchestrator never forwards GitHub credentials, API keys, private-key
-material, token-like variables or password-like variables into the Codex child
-environment.
+Install/authenticate Codex CLI separately.
 
 ## Preflight
 
@@ -93,54 +91,83 @@ Run:
 python scripts/run_orchestrator.py doctor
 ```
 
-`doctor` does not invoke an agent and does not mutate GitHub. It verifies:
+`doctor` invokes no agent and mutates no GitHub state. It verifies:
 
-- Local checkout is `main` and clean.
-- Codex CLI is available.
-- Required project and identity configuration is present.
-- The supplied restricted GitHub credential is valid for its configured mode.
-- The GitHub Project exists and its required fields/options match the contract.
-- Active `main` rules require pull requests, conversation resolution,
-  `repository-validation`, non-fast-forward updates and deletion protection.
-- The active repository ruleset contains no bypass actors.
+- local checkout is clean `main`;
+- Codex CLI is available;
+- Project and automation identity configuration is present;
+- restricted GitHub credential matches its configured identity mode;
+- Project fields/options match the contract;
+- active `main` rules require PRs, conversation resolution, `repository-validation`,
+  non-fast-forward protection and deletion protection;
+- active repository ruleset has no bypass actors;
+- GitHub and runtime command prefixes agree.
 
-A blocked result must be resolved before running a proposal.
+Resolve every blocked preflight result before starting continuous work.
 
-## First autonomous proposal
-
-When `doctor` reports `ready`, run:
+## Inspecting safety policy
 
 ```bash
-python scripts/run_orchestrator.py proposal
+python scripts/run_orchestrator.py usage
+python scripts/run_orchestrator.py policy
 ```
 
-The worker then:
+`usage` reads Codex account rate-limit state and applies configured reserve thresholds. `policy`
+prints the 24/7 schedule, overnight active window, control-plane polling, implementation limits and
+usage guard switches.
 
-1. Runs deterministic repository validation.
-2. Loads only task-scoped documents from the canonical context index.
-3. Routes Product Manager and Business Analysis through the approved model
-   profiles.
-4. Requires JSON-Schema-valid output and deterministic workflow/proposal
-   identity checks.
-5. Applies bounded retries, one bounded PM revision cycle, elapsed-time limits
-   and token warnings.
-6. Persists workflow state, role telemetry and idempotency reservations in the
-   local SQLite state store before GitHub side effects.
-7. Reconciles or creates the proposal issue and Project item.
-8. Sets Product Approval to `Pending`, Current Role to `Human` and Automation
-   State to `Waiting`.
-9. Publishes a model/attempt/token audit comment.
-10. Stops with `waiting_human`.
+## One controlled pass
 
-No implementation starts from this command.
+```bash
+python scripts/run_orchestrator.py iteration
+```
 
-## Restart behaviour
+This performs one GitHub control-plane pass and, if cadence/usage/repository gates permit, at most
+one bounded Task implementation pass. It is useful before enabling the persistent worker.
 
-The default state directory is `.orchestrator`, which is ignored by Git. The
-SQLite store records durable workflow IDs, schema-valid PM/BA outputs, measured
-usage and idempotency keys. If the process stops after reserving a GitHub side
-effect, a later invocation reconciles the marker/project state before creating
-a duplicate.
+## Continuous GitHub-controlled operation
 
-If a completed proposal is already waiting for human action, another `proposal`
-invocation returns the waiting workflow instead of generating a second issue.
+Start:
+
+```bash
+python scripts/run_orchestrator.py run
+```
+
+The process stays in the foreground until Ctrl-C. GitHub is polled every `control_plane.poll_seconds`
+(currently 60 seconds). Normal product work is then assigned entirely in GitHub:
+
+1. create a New Epic or New Feature issue;
+2. discuss requirements in its comments;
+3. use `/orch` commands documented in the repository README;
+4. review/merge resulting draft PRs.
+
+Autonomous implementation has no working-hours prohibition. Default cadence is 30 minutes; the
+23:00–07:00 Europe/Sofia active window uses 15 minutes. There is no daily iteration-count cap.
+Usage reserve, per-iteration resource caps and failure/repository stop conditions remain hard gates.
+
+## Implementation publication safety
+
+Task implementation runs in a separate git worktree with a write-enabled Codex sandbox. The agent
+cannot push or create PRs. The deterministic orchestrator performs validation and independent QA /
+review, then rechecks the Task and parent Feature approval digest before commit and again before
+push. If the Feature changed materially while an atomic action was running, the Task becomes stale
+and publication stops.
+
+Git push uses the local Git credential mechanism with terminal prompting disabled. Never embed
+`GITHUB_TOKEN` in a remote URL, command argument, prompt or agent environment.
+
+## Restart and recovery behaviour
+
+GitHub is the durable product/control-plane source of truth. Managed issues contain hidden metadata
+for origin, hierarchy, revision, approval digest and execution state. Local `.orchestrator` SQLite
+state stores iteration/failure/notification counters and legacy proposal idempotency data.
+
+After restart the worker re-reads GitHub state, reconciles task dependencies and observes existing
+draft PR outcomes. A merged orchestrator PR completes its Task; a closed/unmerged PR returns the
+Task to rework. Cancelled managed work is closed as not planned rather than deleted.
+
+## Legacy proposal command
+
+`python scripts/run_orchestrator.py proposal` remains available for compatibility with the original
+single-proposal bootstrap workflow. New product work should use the GitHub Epic/Feature Issue Forms
+and `/orch` command surface instead.

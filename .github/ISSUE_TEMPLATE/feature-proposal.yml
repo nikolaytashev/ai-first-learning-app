@@ -1,89 +1,47 @@
-name: Feature proposal
-description: Propose an outcome for human product approval.
+name: New feature
+description: Give the orchestrator a new product feature to analyze, decompose and implement.
 title: "[Feature]: "
-labels:
-  - enhancement
 body:
   - type: markdown
     attributes:
       value: |
-        Product Approval starts as Pending. Implementation requires an allow-listed human `/approve` command.
+        This issue becomes the canonical Feature. Product Manager and Business Analysis agents will analyze it, maintain its specification and create/reconcile child Tasks. Continue product discussion in this issue's comments and use `/orch` commands to control it.
 
-  - type: input
-    id: problem
+  - type: textarea
+    id: request
     attributes:
-      label: Problem
-      description: What user problem exists, and what evidence supports it?
-      placeholder: Describe the problem without prescribing a solution.
-    validations:
-      required: true
-
-  - type: input
-    id: target-users
-    attributes:
-      label: Target users
-      description: Which approved user group experiences the problem?
+      label: What do you want?
+      description: Describe the desired feature in your own words. You do not need to write acceptance criteria or technical tasks.
+      placeholder: I want the learner to be able to...
     validations:
       required: true
 
   - type: textarea
-    id: outcome
+    id: why
     attributes:
-      label: Desired outcome and success measure
-      description: State the change in user outcome and how it would be measured.
-    validations:
-      required: true
+      label: Why / problem being solved
+      description: Optional context about the user problem or expected outcome.
 
   - type: textarea
-    id: scope
+    id: constraints
     attributes:
-      label: In scope
-      description: List the minimum behaviour included in this proposal.
-    validations:
-      required: true
-
-  - type: textarea
-    id: non-goals
-    attributes:
-      label: Out of scope
-      description: List adjacent behaviour that this proposal does not authorize.
-    validations:
-      required: true
-
-  - type: textarea
-    id: acceptance-criteria
-    attributes:
-      label: Acceptance criteria
-      description: Use testable statements and include non-functional requirements.
-      placeholder: |
-        - [ ] AC-1: ...
-        - [ ] AC-2: ...
-    validations:
-      required: true
-
-  - type: textarea
-    id: decisions
-    attributes:
-      label: Decisions required
-      description: List product, privacy, security or architecture questions that still require human input.
+      label: Constraints or important details
+      description: Optional behaviours, exclusions, technical/business constraints, or decisions already made.
 
   - type: dropdown
-    id: size
+    id: priority
     attributes:
-      label: Proposed size
-      description: Size L must be split before implementation.
+      label: Priority override
+      description: Optional. Leave Unspecified and let Product Management recommend priority.
       options:
-        - XS
-        - S
-        - M
-        - L
-    validations:
-      required: true
+        - Unspecified
+        - P0
+        - P1
+        - P2
+        - P3
 
   - type: textarea
-    id: context
+    id: references
     attributes:
-      label: Context references
-      description: List canonical repository paths and related issue numbers.
-    validations:
-      required: true
+      label: References
+      description: Optional related issues, screenshots, documents or links.

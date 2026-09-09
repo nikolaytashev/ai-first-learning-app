@@ -1,4 +1,4 @@
-"""Restricted GitHub control-plane adapter for the proposal workflow."""
+"""Restricted GitHub control-plane adapter for autonomous planning and delivery."""
 
 from __future__ import annotations
 
@@ -9,7 +9,14 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from scripts.orchestrator.model import IssueRef, JsonObject, OrchestratorConfig
+from scripts.orchestrator.model import (
+    IssueComment,
+    IssueRef,
+    IssueSnapshot,
+    JsonObject,
+    OrchestratorConfig,
+    PullRequestSnapshot,
+)
 
 _API = "https://api.github.com"
 _GRAPHQL = "https://api.github.com/graphql"
@@ -34,7 +41,7 @@ class ProjectSnapshot:
 
 
 class GitHubClient:
-    """Minimal GitHub REST/GraphQL client constrained to approved side effects."""
+    """GitHub REST/GraphQL adapter constrained to approved control-plane effects."""
 
     def __init__(self, config: OrchestratorConfig, token: str) -> None:
         if not token:
@@ -88,6 +95,77 @@ class GitHubClient:
         if not isinstance(data, dict):
             raise RuntimeError("GitHub GraphQL response omitted data")
         return cast(JsonObject, data)
+
+    @staticmethod
+    def _issue(raw: object) -> IssueSnapshot:
+        if not isinstance(raw, dict):
+            raise RuntimeError("GitHub issue response must be an object")
+        database_id = raw.get("id")
+        number = raw.get("number")
+        node_id = raw.get("node_id")
+        url = raw.get("html_url")
+        title = raw.get("title")
+        state = raw.get("state")
+        user = raw.get("user")
+        author = user.get("login") if isinstance(user, dict) else None
+        if (
+            not isinstance(database_id, int)
+            or not isinstance(number, int)
+            or not isinstance(node_id, str)
+            or not isinstance(url, str)
+            or not isinstance(title, str)
+            or not isinstance(state, str)
+            or not isinstance(author, str)
+        ):
+            raise RuntimeError("GitHub issue response omitted required identity fields")
+        labels_raw = raw.get("labels")
+        labels: list[str] = []
+        if isinstance(labels_raw, list):
+            for item in labels_raw:
+                if isinstance(item, dict) and isinstance(item.get("name"), str):
+                    labels.append(cast(str, item["name"]))
+        state_reason = raw.get("state_reason")
+        return IssueSnapshot(
+            id=database_id,
+            number=number,
+            node_id=node_id,
+            url=url,
+            title=title,
+            body=str(raw.get("body") or ""),
+            state=state,
+            state_reason=state_reason if isinstance(state_reason, str) else None,
+            author=author,
+            labels=tuple(labels),
+        )
+
+    @staticmethod
+    def _pull_request(raw: object) -> PullRequestSnapshot:
+        if not isinstance(raw, dict):
+            raise RuntimeError("GitHub pull request response must be an object")
+        number = raw.get("number")
+        url = raw.get("html_url")
+        state = raw.get("state")
+        draft = raw.get("draft")
+        head = raw.get("head")
+        head_ref = head.get("ref") if isinstance(head, dict) else None
+        if (
+            not isinstance(number, int)
+            or not isinstance(url, str)
+            or not isinstance(state, str)
+            or not isinstance(draft, bool)
+            or not isinstance(head_ref, str)
+        ):
+            raise RuntimeError("GitHub pull request response omitted required fields")
+        merged_at = raw.get("merged_at")
+        return PullRequestSnapshot(
+            number=number,
+            url=url,
+            state=state,
+            draft=draft,
+            merged_at=merged_at if isinstance(merged_at, str) else None,
+            head_ref=head_ref,
+            body=str(raw.get("body") or ""),
+        )
 
     def verify_identity_and_scope(self) -> list[str]:
         """Verify the supplied token belongs to the configured restricted identity."""
@@ -224,10 +302,9 @@ class GitHubClient:
                 "number": "NUMBER",
                 "text": "TEXT",
             }
-            if isinstance(expected_type, str):
-                expected_github_type = type_map.get(expected_type)
-            else:
-                expected_github_type = None
+            expected_github_type = (
+                type_map.get(expected_type) if isinstance(expected_type, str) else None
+            )
             if expected_github_type and field.data_type != expected_github_type:
                 errors.append(
                     f"Project field {name!r} has type {field.data_type}, "
@@ -274,23 +351,23 @@ class GitHubClient:
             )
             if isinstance(raw_checks, list):
                 for check in raw_checks:
-                    if not isinstance(check, dict):
-                        continue
-                    context = check.get("context")
-                    if isinstance(context, str):
-                        contexts.add(context)
+                    if isinstance(check, dict) and isinstance(check.get("context"), str):
+                        contexts.add(cast(str, check["context"]))
         missing_checks = set(self._config.branch_policy.required_status_checks) - contexts
         if missing_checks:
-            message = f"main rules are missing required status checks: {sorted(missing_checks)}"
-            errors.append(message)
+            errors.append(
+                f"main rules are missing required status checks: {sorted(missing_checks)}"
+            )
 
         rulesets_raw = self._rest("GET", f"/repos/{repo}/rulesets?includes_parents=false")
         if not isinstance(rulesets_raw, list) or not rulesets_raw:
             errors.append("repository has no active ruleset to protect main")
             return errors
+        active_found = False
         for summary in rulesets_raw:
             if not isinstance(summary, dict) or summary.get("enforcement") != "active":
                 continue
+            active_found = True
             ruleset_id = summary.get("id")
             if not isinstance(ruleset_id, int):
                 continue
@@ -298,42 +375,215 @@ class GitHubClient:
             bypass = detail.get("bypass_actors") if isinstance(detail, dict) else None
             if isinstance(bypass, list) and bypass:
                 errors.append(f"active ruleset {ruleset_id} contains bypass actors")
+        if not active_found:
+            errors.append("repository has no active ruleset to protect main")
         return errors
+
+    def list_issues(self, *, state: str = "all") -> list[IssueSnapshot]:
+        """List repository issues, excluding pull requests, across all pages."""
+        repo = self._config.repository.full_name
+        result: list[IssueSnapshot] = []
+        for page in range(1, 11):
+            query = urlencode({"state": state, "per_page": 100, "page": page, "sort": "updated"})
+            raw = self._rest("GET", f"/repos/{repo}/issues?{query}")
+            if not isinstance(raw, list):
+                raise RuntimeError("GitHub issue listing returned invalid data")
+            for item in raw:
+                if isinstance(item, dict) and "pull_request" not in item:
+                    result.append(self._issue(item))
+            if len(raw) < 100:
+                break
+        return result
+
+    def get_issue(self, issue_number: int) -> IssueSnapshot:
+        """Read one repository issue."""
+        repo = self._config.repository.full_name
+        return self._issue(self._rest("GET", f"/repos/{repo}/issues/{issue_number}"))
 
     def find_issue_by_marker(self, marker: str) -> IssueRef | None:
         """Reconcile an issue by a stable hidden marker before creating a duplicate."""
-        repo = self._config.repository.full_name
-        for page in range(1, 6):
-            query = urlencode({"state": "all", "per_page": 100, "page": page})
-            raw = self._rest("GET", f"/repos/{repo}/issues?{query}")
-            if not isinstance(raw, list):
-                break
-            for issue in raw:
-                if not isinstance(issue, dict) or "pull_request" in issue:
-                    continue
-                if marker not in str(issue.get("body") or ""):
-                    continue
-                number = issue.get("number")
-                node_id = issue.get("node_id")
-                url = issue.get("html_url")
-                if isinstance(number, int) and isinstance(node_id, str) and isinstance(url, str):
-                    return IssueRef(number=number, node_id=node_id, url=url)
-            if len(raw) < 100:
-                break
+        for issue in self.list_issues(state="all"):
+            if marker in issue.body:
+                return issue.ref
         return None
 
-    def create_issue(self, title: str, body: str) -> IssueRef:
-        """Create one proposal issue in the configured repository."""
+    def create_issue(
+        self,
+        title: str,
+        body: str,
+        *,
+        labels: list[str] | None = None,
+    ) -> IssueRef:
+        """Create an issue and return its stable identity."""
         repo = self._config.repository.full_name
-        raw = self._rest("POST", f"/repos/{repo}/issues", {"title": title, "body": body})
-        if not isinstance(raw, dict):
-            raise RuntimeError("GitHub issue creation returned an invalid response")
-        number = raw.get("number")
-        node_id = raw.get("node_id")
-        url = raw.get("html_url")
-        if not isinstance(number, int) or not isinstance(node_id, str) or not isinstance(url, str):
-            raise RuntimeError("GitHub issue creation omitted issue identity")
-        return IssueRef(number=number, node_id=node_id, url=url)
+        payload: JsonObject = {"title": title, "body": body}
+        if labels:
+            payload["labels"] = labels
+        return self._issue(self._rest("POST", f"/repos/{repo}/issues", payload)).ref
+
+    def update_issue(
+        self,
+        issue_number: int,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        state: str | None = None,
+        state_reason: str | None = None,
+    ) -> IssueSnapshot:
+        """Patch a managed issue without deleting historical identity."""
+        payload: JsonObject = {}
+        if title is not None:
+            payload["title"] = title
+        if body is not None:
+            payload["body"] = body
+        if state is not None:
+            payload["state"] = state
+        if state_reason is not None:
+            payload["state_reason"] = state_reason
+        repo = self._config.repository.full_name
+        return self._issue(self._rest("PATCH", f"/repos/{repo}/issues/{issue_number}", payload))
+
+    def list_comments(self, issue_number: int) -> list[IssueComment]:
+        """Read every comment on an issue in stable creation order."""
+        repo = self._config.repository.full_name
+        comments: list[IssueComment] = []
+        for page in range(1, 11):
+            query = urlencode({"per_page": 100, "page": page})
+            raw = self._rest("GET", f"/repos/{repo}/issues/{issue_number}/comments?{query}")
+            if not isinstance(raw, list):
+                raise RuntimeError("GitHub comments response must be a list")
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                comment_id = item.get("id")
+                url = item.get("html_url") or item.get("url")
+                user = item.get("user")
+                author = user.get("login") if isinstance(user, dict) else None
+                created_at = item.get("created_at")
+                updated_at = item.get("updated_at")
+                if all(
+                    isinstance(value, expected)
+                    for value, expected in (
+                        (comment_id, int),
+                        (url, str),
+                        (author, str),
+                        (created_at, str),
+                        (updated_at, str),
+                    )
+                ):
+                    comments.append(
+                        IssueComment(
+                            id=cast(int, comment_id),
+                            url=cast(str, url),
+                            author=cast(str, author),
+                            body=str(item.get("body") or ""),
+                            created_at=cast(str, created_at),
+                            updated_at=cast(str, updated_at),
+                        )
+                    )
+            if len(raw) < 100:
+                break
+        return comments
+
+    def find_comment_by_marker(self, issue_number: int, marker: str) -> str | None:
+        """Reconcile an audit comment by hidden idempotency marker."""
+        for comment in self.list_comments(issue_number):
+            if marker in comment.body:
+                return comment.url
+        return None
+
+    def add_comment(self, issue_number: int, body: str) -> str:
+        """Publish an audit/comment response and return its stable API URL."""
+        repo = self._config.repository.full_name
+        raw = self._rest(
+            "POST",
+            f"/repos/{repo}/issues/{issue_number}/comments",
+            {"body": body},
+        )
+        url = raw.get("html_url") or raw.get("url") if isinstance(raw, dict) else None
+        if not isinstance(url, str):
+            raise RuntimeError("GitHub comment creation omitted URL")
+        return url
+
+    def list_sub_issues(self, issue_number: int) -> list[IssueSnapshot]:
+        """List native GitHub sub-issues in their current priority order."""
+        repo = self._config.repository.full_name
+        raw = self._rest("GET", f"/repos/{repo}/issues/{issue_number}/sub_issues?per_page=100")
+        if not isinstance(raw, list):
+            raise RuntimeError("GitHub sub-issues response must be a list")
+        return [self._issue(item) for item in raw]
+
+    def add_sub_issue(
+        self,
+        parent_issue_number: int,
+        child_database_id: int,
+        *,
+        replace_parent: bool = False,
+    ) -> None:
+        """Attach an existing issue as a native sub-issue."""
+        repo = self._config.repository.full_name
+        self._rest(
+            "POST",
+            f"/repos/{repo}/issues/{parent_issue_number}/sub_issues",
+            {"sub_issue_id": child_database_id, "replace_parent": replace_parent},
+        )
+
+    def remove_sub_issue(self, parent_issue_number: int, child_database_id: int) -> None:
+        """Detach a native sub-issue while preserving the child issue."""
+        repo = self._config.repository.full_name
+        self._rest(
+            "DELETE",
+            f"/repos/{repo}/issues/{parent_issue_number}/sub_issue",
+            {"sub_issue_id": child_database_id},
+        )
+
+    def reprioritize_sub_issue(
+        self,
+        parent_issue_number: int,
+        child_database_id: int,
+        *,
+        after_database_id: int | None = None,
+    ) -> None:
+        """Move a native sub-issue after another child, or to first when omitted."""
+        repo = self._config.repository.full_name
+        payload: JsonObject = {"sub_issue_id": child_database_id}
+        if after_database_id is not None:
+            payload["after_id"] = after_database_id
+        else:
+            payload["after_id"] = None
+        self._rest(
+            "PATCH",
+            f"/repos/{repo}/issues/{parent_issue_number}/sub_issues/priority",
+            payload,
+        )
+
+    def list_blockers(self, issue_number: int) -> list[IssueSnapshot]:
+        """List issues that currently block an issue."""
+        repo = self._config.repository.full_name
+        raw = self._rest(
+            "GET",
+            f"/repos/{repo}/issues/{issue_number}/dependencies/blocked_by?per_page=100",
+        )
+        if not isinstance(raw, list):
+            raise RuntimeError("GitHub dependency response must be a list")
+        return [self._issue(item) for item in raw]
+
+    def add_blocker(self, issue_number: int, blocker_database_id: int) -> None:
+        """Create a native blocked-by relation."""
+        repo = self._config.repository.full_name
+        self._rest(
+            "POST",
+            f"/repos/{repo}/issues/{issue_number}/dependencies/blocked_by",
+            {"issue_id": blocker_database_id},
+        )
+
+    def remove_blocker(self, issue_number: int, blocker_database_id: int) -> None:
+        """Remove one native blocked-by relation."""
+        repo = self._config.repository.full_name
+        self._rest(
+            "DELETE",
+            f"/repos/{repo}/issues/{issue_number}/dependencies/blocked_by/{blocker_database_id}",
+        )
 
     def add_to_project(self, project_id: str, issue_node_id: str) -> str:
         """Add an issue to Project V2 and return the item node ID."""
@@ -352,13 +602,61 @@ class GitHubClient:
             raise RuntimeError("GitHub Project item creation omitted item id")
         return item_id
 
+    def find_project_item(self, project: ProjectSnapshot, issue_number: int) -> str | None:
+        """Resolve an issue's item id for the configured Project V2."""
+        query = """
+        query($owner: String!, $name: String!, $number: Int!) {
+          repository(owner: $owner, name: $name) {
+            issue(number: $number) {
+              projectItems(first: 100) { nodes { id project { id } } }
+            }
+          }
+        }
+        """
+        data = self._graphql(
+            query,
+            {
+                "owner": self._config.repository.owner,
+                "name": self._config.repository.name,
+                "number": issue_number,
+            },
+        )
+        repository = data.get("repository")
+        issue = repository.get("issue") if isinstance(repository, dict) else None
+        items = issue.get("projectItems") if isinstance(issue, dict) else None
+        nodes = items.get("nodes") if isinstance(items, dict) else None
+        if not isinstance(nodes, list):
+            return None
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            linked_project = node.get("project")
+            if (
+                isinstance(linked_project, dict)
+                and linked_project.get("id") == project.project_id
+                and isinstance(node.get("id"), str)
+            ):
+                return cast(str, node["id"])
+        return None
+
+    def ensure_project_item(
+        self,
+        project: ProjectSnapshot,
+        issue: IssueRef | IssueSnapshot,
+    ) -> str:
+        """Idempotently add an issue to the configured project."""
+        number = issue.number
+        node_id = issue.node_id
+        existing = self.find_project_item(project, number)
+        return existing or self.add_to_project(project.project_id, node_id)
+
     def update_project_fields(
         self,
         project: ProjectSnapshot,
         item_id: str,
         values: dict[str, str | int],
     ) -> None:
-        """Set approved Project V2 fields on the proposal item."""
+        """Set Project V2 fields on a managed work item."""
         mutation = """
         mutation($input: UpdateProjectV2ItemFieldValueInput!) {
           updateProjectV2ItemFieldValue(input: $input) { projectV2Item { id } }
@@ -394,33 +692,41 @@ class GitHubClient:
                 },
             )
 
-    def find_comment_by_marker(self, issue_number: int, marker: str) -> str | None:
-        """Reconcile an audit comment by hidden idempotency marker."""
+    def find_pull_request_by_head(self, branch: str) -> PullRequestSnapshot | None:
+        """Find an existing pull request for one orchestrator-owned branch."""
         repo = self._config.repository.full_name
-        for page in range(1, 6):
-            query = urlencode({"per_page": 100, "page": page})
-            raw = self._rest("GET", f"/repos/{repo}/issues/{issue_number}/comments?{query}")
-            if not isinstance(raw, list):
-                break
-            for comment in raw:
-                if not isinstance(comment, dict) or marker not in str(comment.get("body") or ""):
-                    continue
-                url = comment.get("url")
-                if isinstance(url, str):
-                    return url
-            if len(raw) < 100:
-                break
-        return None
+        head = f"{self._config.repository.owner}:{branch}"
+        query = urlencode({"state": "all", "head": head, "per_page": 20})
+        raw = self._rest("GET", f"/repos/{repo}/pulls?{query}")
+        if not isinstance(raw, list):
+            raise RuntimeError("GitHub pull request listing returned invalid data")
+        return None if not raw else self._pull_request(raw[0])
 
-    def add_comment(self, issue_number: int, body: str) -> str:
-        """Publish an audit comment and return its stable API URL."""
+    def get_pull_request(self, number: int) -> PullRequestSnapshot:
+        """Read one pull request."""
+        repo = self._config.repository.full_name
+        return self._pull_request(self._rest("GET", f"/repos/{repo}/pulls/{number}"))
+
+    def create_draft_pull_request(
+        self,
+        *,
+        title: str,
+        body: str,
+        head: str,
+        base: str,
+    ) -> PullRequestSnapshot:
+        """Create a draft PR; merge authority remains human-only."""
         repo = self._config.repository.full_name
         raw = self._rest(
             "POST",
-            f"/repos/{repo}/issues/{issue_number}/comments",
-            {"body": body},
+            f"/repos/{repo}/pulls",
+            {"title": title, "body": body, "head": head, "base": base, "draft": True},
         )
-        url = raw.get("url") if isinstance(raw, dict) else None
-        if not isinstance(url, str):
-            raise RuntimeError("GitHub comment creation omitted URL")
-        return url
+        return self._pull_request(raw)
+
+    def close_pull_request(self, number: int) -> PullRequestSnapshot:
+        """Close an orchestrator-owned draft PR without merging it."""
+        repo = self._config.repository.full_name
+        return self._pull_request(
+            self._rest("PATCH", f"/repos/{repo}/pulls/{number}", {"state": "closed"})
+        )

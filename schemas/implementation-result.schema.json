@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/implementation-result.schema.json",
+  "title": "Implementation Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workflow_id", "issue_number", "status", "summary", "changed_files", "tests_to_run", "blocker", "provenance"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "workflow_id": {"type": "string", "minLength": 1},
+    "issue_number": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["completed", "blocked"]},
+    "summary": {"type": "string", "minLength": 3},
+    "changed_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "tests_to_run": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "blocker": {"type": ["string", "null"]},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "agent_version", "generated_at"],
+      "properties": {
+        "role": {"const": "implementer"},
+        "agent_version": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "blocked"}}},
+      "then": {"properties": {"blocker": {"type": "string", "minLength": 3}}}
+    }
+  ]
+}

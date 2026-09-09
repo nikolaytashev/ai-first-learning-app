@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 
 repository:
   owner: nikolaytashev
@@ -21,6 +21,9 @@ project:
     Type:
       type: single_select
       options: [Epic, Feature, Task, Bug, Decision, Architecture]
+    Origin:
+      type: single_select
+      options: [Human, Agent]
     Priority:
       type: single_select
       options: [P0, P1, P2, P3]
@@ -46,12 +49,16 @@ authorization:
   automation_login: null
   automation_identity_type: null
   automation_identity_status: decision_required
+  command_prefix: /orch
   accepted_commands:
-    - /approve
-    - /request-changes
-    - /pause
-    - /resume
-    - /cancel
+    - analyze
+    - replan
+    - approve
+    - pause
+    - resume
+    - cancel
+    - priority
+    - rework
 
 branch_policy:
   protected_branches:
@@ -71,11 +78,15 @@ automation_permissions:
     - read_repository
     - read_repository_rules
     - read_and_write_issues
+    - read_issue_comments
     - read_and_write_project_items
     - create_issue_comments
+    - manage_sub_issues
+    - manage_issue_dependencies
     - create_namespaced_branches
     - push_namespaced_branches
     - create_draft_pull_requests
+    - close_own_draft_pull_requests
   forbidden:
     - push_default_branch
     - merge_pull_requests

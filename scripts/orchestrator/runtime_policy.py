@@ -119,14 +119,14 @@ class BudgetedAgentRunner:
 
 
 def local_now(settings: RuntimePolicySettings, now_utc: datetime | None = None) -> datetime:
-    """Return the policy-local current time from an aware UTC timestamp."""
+    """Return the configured local current time from an aware UTC timestamp."""
     current = datetime.now(UTC) if now_utc is None else now_utc
     if current.tzinfo is None:
         raise ValueError("now_utc must be timezone-aware")
-    return current.astimezone(ZoneInfo(settings.schedule.working_hours.timezone))
+    return current.astimezone(ZoneInfo(settings.schedule.timezone))
 
 
-def _inside_working_hours(current: time, start: time, end: time) -> bool:
+def _inside_window(current: time, start: time, end: time) -> bool:
     if start == end:
         return True
     if start < end:
@@ -134,26 +134,33 @@ def _inside_working_hours(current: time, start: time, end: time) -> bool:
     return current >= start or current < end
 
 
+def schedule_interval_minutes(settings: RuntimePolicySettings, *, now_utc: datetime) -> int:
+    """Resolve the current 24/7 cadence, using the faster active window when configured."""
+    local = local_now(settings, now_utc)
+    active = settings.schedule.active_window
+    if active.enabled and _inside_window(local.time(), active.start, active.end):
+        return active.interval_minutes
+    return settings.schedule.default_interval_minutes
+
+
 def evaluate_schedule(
     settings: RuntimePolicySettings,
     *,
     now_utc: datetime,
     last_iteration_started_at: datetime | None,
-    iterations_today: int,
+    iterations_today: int | None = None,
 ) -> PolicyDecision:
-    """Decide whether cadence, working hours and daily count permit a new iteration."""
-    local = local_now(settings, now_utc)
-    working = settings.schedule.working_hours
-    if working.enabled and not _inside_working_hours(local.time(), working.start, working.end):
-        return PolicyDecision(False, "outside_working_hours")
-    if iterations_today >= settings.schedule.max_iterations_per_day:
-        return PolicyDecision(False, "daily_iteration_limit_reached")
+    """Allow work at every hour while enforcing the current cadence only.
+
+    ``iterations_today`` is accepted for compatibility with persisted runtime code but is
+    intentionally ignored: autonomous work has no daily-count restriction.
+    """
+    del iterations_today
     if last_iteration_started_at is not None:
         if last_iteration_started_at.tzinfo is None:
             raise ValueError("last_iteration_started_at must be timezone-aware")
-        next_allowed = last_iteration_started_at + timedelta(
-            minutes=settings.schedule.interval_minutes
-        )
+        interval = schedule_interval_minutes(settings, now_utc=now_utc)
+        next_allowed = last_iteration_started_at + timedelta(minutes=interval)
         if now_utc < next_allowed:
             return PolicyDecision(
                 False,

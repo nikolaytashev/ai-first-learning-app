@@ -45,6 +45,53 @@ class IssueRef:
     number: int
     node_id: str
     url: str
+    database_id: int | None = None
+
+
+@dataclass(frozen=True)
+class IssueSnapshot:
+    """GitHub issue state required for planning, commands and reconciliation."""
+
+    id: int
+    number: int
+    node_id: str
+    url: str
+    title: str
+    body: str
+    state: str
+    state_reason: str | None
+    author: str
+    labels: tuple[str, ...]
+
+    @property
+    def ref(self) -> IssueRef:
+        """Return the compact issue identity used by side-effect APIs."""
+        return IssueRef(self.number, self.node_id, self.url, self.id)
+
+
+@dataclass(frozen=True)
+class IssueComment:
+    """One GitHub issue comment considered by the command processor."""
+
+    id: int
+    url: str
+    author: str
+    body: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class PullRequestSnapshot:
+    """Pull-request state required by bounded implementation workflows."""
+
+    number: int
+    url: str
+    state: str
+    draft: bool
+    merged_at: str | None
+    head_ref: str
+    body: str
 
 
 @dataclass(frozen=True)
@@ -78,6 +125,8 @@ class AuthorizationSettings:
     human_approvers: tuple[str, ...]
     automation_login: str | None
     automation_identity_type: str | None
+    command_prefix: str
+    accepted_commands: tuple[str, ...]
 
 
 @dataclass(frozen=True)

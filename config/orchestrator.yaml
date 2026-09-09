@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 
 proposal_workflow:
   max_elapsed_seconds: 1800
@@ -7,6 +7,20 @@ proposal_workflow:
   malformed_output_corrections: 1
   action_token_warning: 120000
   workflow_token_warning: 500000
+
+control_plane:
+  poll_seconds: 60
+  max_reconciliations_per_iteration: 3
+  auto_reconcile_human_comments: true
+  command_prefix: /orch
+  intake:
+    epic_title_prefix: "[Epic]"
+    feature_title_prefix: "[Feature]"
+
+implementation_workflow:
+  max_elapsed_seconds: 7200
+  max_corrective_cycles: 3
+  write_sandbox: workspace-write
 
 state:
   directory_env: ORCHESTRATOR_STATE_DIRECTORY
@@ -30,13 +44,13 @@ usage_guard:
 
 autonomy:
   schedule:
-    interval_minutes: 30
-    max_iterations_per_day: 8
-    working_hours:
+    timezone: Europe/Sofia
+    default_interval_minutes: 30
+    active_window:
       enabled: true
-      timezone: Europe/Sofia
-      start: "09:00"
-      end: "22:00"
+      start: "23:00"
+      end: "07:00"
+      interval_minutes: 15
   iteration_budget:
     max_ai_requests: 12
     max_tasks: 3

@@ -15,22 +15,43 @@ from scripts.orchestrator.model import JsonObject
 
 
 @dataclass(frozen=True)
-class WorkingHoursSettings:
-    """Local-time window in which new autonomous iterations may begin."""
+class ActiveWindowSettings:
+    """Local-time window in which the autonomous cadence becomes more active."""
 
     enabled: bool
-    timezone: str
     start: time
     end: time
+    interval_minutes: int
 
 
 @dataclass(frozen=True)
 class IterationScheduleSettings:
-    """Cadence and daily-cap settings for autonomous work."""
+    """Twenty-four-hour cadence settings for autonomous work."""
 
-    interval_minutes: int
-    max_iterations_per_day: int
-    working_hours: WorkingHoursSettings
+    timezone: str
+    default_interval_minutes: int
+    active_window: ActiveWindowSettings
+
+
+@dataclass(frozen=True)
+class ControlPlaneSettings:
+    """Polling and GitHub intake settings for the command/control loop."""
+
+    poll_seconds: int
+    max_reconciliations_per_iteration: int
+    auto_reconcile_human_comments: bool
+    command_prefix: str
+    epic_title_prefix: str
+    feature_title_prefix: str
+
+
+@dataclass(frozen=True)
+class ImplementationWorkflowSettings:
+    """Bounded local code-execution settings for one approved task."""
+
+    max_elapsed_seconds: int
+    max_corrective_cycles: int
+    write_sandbox: str
 
 
 @dataclass(frozen=True)
@@ -44,7 +65,7 @@ class IterationBudgetSettings:
 
 @dataclass(frozen=True)
 class PrioritySettings:
-    """Priority and exclusion labels for future task-processing workflows."""
+    """Priority and exclusion labels for task-processing workflows."""
 
     order: tuple[str, ...]
     skip_labels: tuple[str, ...]
@@ -89,13 +110,13 @@ class RuntimePolicySettings:
         """Return a stable JSON-serializable representation for CLI inspection."""
         return {
             "schedule": {
-                "interval_minutes": self.schedule.interval_minutes,
-                "max_iterations_per_day": self.schedule.max_iterations_per_day,
-                "working_hours": {
-                    "enabled": self.schedule.working_hours.enabled,
-                    "timezone": self.schedule.working_hours.timezone,
-                    "start": self.schedule.working_hours.start.strftime("%H:%M"),
-                    "end": self.schedule.working_hours.end.strftime("%H:%M"),
+                "timezone": self.schedule.timezone,
+                "default_interval_minutes": self.schedule.default_interval_minutes,
+                "active_window": {
+                    "enabled": self.schedule.active_window.enabled,
+                    "start": self.schedule.active_window.start.strftime("%H:%M"),
+                    "end": self.schedule.active_window.end.strftime("%H:%M"),
+                    "interval_minutes": self.schedule.active_window.interval_minutes,
                 },
             },
             "iteration_budget": {
@@ -169,19 +190,72 @@ def _clock(value: Any, label: str) -> time:
         raise ValueError(f"{label} must be HH:MM") from exc
 
 
-def load_runtime_policy_settings(root: Path) -> RuntimePolicySettings:
-    """Load scheduling, budget, priority, stopping and notification defaults."""
+def _document(root: Path) -> Mapping[str, Any]:
     raw = yaml.safe_load((root / "config/orchestrator.yaml").read_text(encoding="utf-8"))
-    document = _mapping(raw, "config/orchestrator.yaml")
-    autonomy = _mapping(document.get("autonomy"), "autonomy")
+    return _mapping(raw, "config/orchestrator.yaml")
 
-    schedule_raw = _mapping(autonomy.get("schedule"), "autonomy.schedule")
-    working_raw = _mapping(schedule_raw.get("working_hours"), "autonomy.schedule.working_hours")
-    timezone = _string(working_raw.get("timezone"), "autonomy.schedule.working_hours.timezone")
+
+def _timezone(value: Any, label: str) -> str:
+    timezone = _string(value, label)
     try:
         ZoneInfo(timezone)
     except ZoneInfoNotFoundError as exc:
         raise ValueError(f"unknown timezone: {timezone}") from exc
+    return timezone
+
+
+def load_control_plane_settings(root: Path) -> ControlPlaneSettings:
+    """Load GitHub polling, intake and command defaults."""
+    document = _document(root)
+    raw = _mapping(document.get("control_plane"), "control_plane")
+    intake = _mapping(raw.get("intake"), "control_plane.intake")
+    return ControlPlaneSettings(
+        poll_seconds=_positive_int(raw.get("poll_seconds"), "control_plane.poll_seconds"),
+        max_reconciliations_per_iteration=_positive_int(
+            raw.get("max_reconciliations_per_iteration"),
+            "control_plane.max_reconciliations_per_iteration",
+        ),
+        auto_reconcile_human_comments=_bool(
+            raw.get("auto_reconcile_human_comments"),
+            "control_plane.auto_reconcile_human_comments",
+        ),
+        command_prefix=_string(raw.get("command_prefix"), "control_plane.command_prefix"),
+        epic_title_prefix=_string(
+            intake.get("epic_title_prefix"),
+            "control_plane.intake.epic_title_prefix",
+        ),
+        feature_title_prefix=_string(
+            intake.get("feature_title_prefix"),
+            "control_plane.intake.feature_title_prefix",
+        ),
+    )
+
+
+def load_implementation_settings(root: Path) -> ImplementationWorkflowSettings:
+    """Load bounded code implementation settings."""
+    document = _document(root)
+    raw = _mapping(document.get("implementation_workflow"), "implementation_workflow")
+    return ImplementationWorkflowSettings(
+        max_elapsed_seconds=_positive_int(
+            raw.get("max_elapsed_seconds"),
+            "implementation_workflow.max_elapsed_seconds",
+        ),
+        max_corrective_cycles=_positive_int(
+            raw.get("max_corrective_cycles"),
+            "implementation_workflow.max_corrective_cycles",
+        ),
+        write_sandbox=_string(raw.get("write_sandbox"), "implementation_workflow.write_sandbox"),
+    )
+
+
+def load_runtime_policy_settings(root: Path) -> RuntimePolicySettings:
+    """Load scheduling, budget, priority, stopping and notification defaults."""
+    document = _document(root)
+    autonomy = _mapping(document.get("autonomy"), "autonomy")
+
+    schedule_raw = _mapping(autonomy.get("schedule"), "autonomy.schedule")
+    active_raw = _mapping(schedule_raw.get("active_window"), "autonomy.schedule.active_window")
+    timezone = _timezone(schedule_raw.get("timezone"), "autonomy.schedule.timezone")
 
     budget_raw = _mapping(autonomy.get("iteration_budget"), "autonomy.iteration_budget")
     priorities_raw = _mapping(autonomy.get("priorities"), "autonomy.priorities")
@@ -198,22 +272,22 @@ def load_runtime_policy_settings(root: Path) -> RuntimePolicySettings:
 
     return RuntimePolicySettings(
         schedule=IterationScheduleSettings(
-            interval_minutes=_positive_int(
-                schedule_raw.get("interval_minutes"),
-                "autonomy.schedule.interval_minutes",
+            timezone=timezone,
+            default_interval_minutes=_positive_int(
+                schedule_raw.get("default_interval_minutes"),
+                "autonomy.schedule.default_interval_minutes",
             ),
-            max_iterations_per_day=_positive_int(
-                schedule_raw.get("max_iterations_per_day"),
-                "autonomy.schedule.max_iterations_per_day",
-            ),
-            working_hours=WorkingHoursSettings(
+            active_window=ActiveWindowSettings(
                 enabled=_bool(
-                    working_raw.get("enabled"),
-                    "autonomy.schedule.working_hours.enabled",
+                    active_raw.get("enabled"),
+                    "autonomy.schedule.active_window.enabled",
                 ),
-                timezone=timezone,
-                start=_clock(working_raw.get("start"), "autonomy.schedule.working_hours.start"),
-                end=_clock(working_raw.get("end"), "autonomy.schedule.working_hours.end"),
+                start=_clock(active_raw.get("start"), "autonomy.schedule.active_window.start"),
+                end=_clock(active_raw.get("end"), "autonomy.schedule.active_window.end"),
+                interval_minutes=_positive_int(
+                    active_raw.get("interval_minutes"),
+                    "autonomy.schedule.active_window.interval_minutes",
+                ),
             ),
         ),
         budget=IterationBudgetSettings(
