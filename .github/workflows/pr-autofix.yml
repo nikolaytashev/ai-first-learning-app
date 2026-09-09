@@ -29,72 +29,15 @@ jobs:
       - name: Install validation dependencies
         run: python -m pip install -r requirements-dev.lock
 
-      - name: Apply semantic fixes and Ruff formatting
+      - name: Apply semantic fixes and formatting
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace(path: str, old: str, new: str) -> None:
-              target = Path(path)
-              text = target.read_text(encoding="utf-8")
-              if old not in text:
-                  raise SystemExit(f"Expected patch context not found in {path}")
-              target.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          replace(
-              "scripts/orchestrator/control_plane.py",
-              '''                if isinstance(artifact_type, str) and isinstance(origin, str):
-                    if artifact_type in {"Epic", "Feature", "Task"}:
-                        result.append(ManagedIssue(issue, artifact_type, origin, metadata))
-''',
-              '''                if (
-                    isinstance(artifact_type, str)
-                    and isinstance(origin, str)
-                    and artifact_type in {"Epic", "Feature", "Task"}
-                ):
-                    result.append(ManagedIssue(issue, artifact_type, origin, metadata))
-''',
-          )
-          replace(
-              "scripts/orchestrator/implementation.py",
-              "from __future__ import annotations\n\nimport json\n",
-              "from __future__ import annotations\n\nfrom collections.abc import Mapping\n\nimport json\n",
-          )
-          replace(
-              "scripts/run_orchestrator.py",
-              "from pathlib import Path\n",
-              "from pathlib import Path\nfrom typing import cast\n",
-          )
-          replace(
-              "scripts/run_orchestrator.py",
-              '''    state: RuntimeStateStore | None = None
-    notifier: Notifier | None = None
-    iteration_id: int | None = None
-''',
-              '''    state: RuntimeStateStore | None = None
-    iteration_id: int | None = None
-''',
-          )
-          replace(
-              "scripts/run_orchestrator.py",
-              '''        state = runtime_state
-        notifier = Notifier(settings.notifications)
-        waiting = workflow_state.latest_waiting()
-''',
-              '''        state = runtime_state
-        waiting = workflow_state.latest_waiting()
-''',
-          )
-          PY
+          python scripts/pr_autofix_temp.py
           ruff check . --fix || true
           ruff format .
-          ruff check . || true
+          ruff check .
 
       - name: Commit fixes
         run: |
-          if git diff --quiet; then
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
