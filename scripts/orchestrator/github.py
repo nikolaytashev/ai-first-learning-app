@@ -342,6 +342,140 @@ class GitHubClient:
                     errors.append(f"Project field {name!r} is missing options: {missing}")
         return errors
 
+    def _single_select_option_inputs(self, field_id: str) -> list[JsonObject]:
+        """Read option definitions so updates preserve existing option identities."""
+        query = """
+        query($id: ID!) {
+          node(id: $id) {
+            ... on ProjectV2SingleSelectField {
+              options { id name color description }
+            }
+          }
+        }
+        """
+        data = self._graphql(query, {"id": field_id})
+        node = data.get("node")
+        raw_options = node.get("options") if isinstance(node, dict) else None
+        if not isinstance(raw_options, list):
+            raise RuntimeError("GitHub Project single-select field omitted options")
+        options: list[JsonObject] = []
+        for raw in raw_options:
+            if not isinstance(raw, dict):
+                continue
+            option_id = raw.get("id")
+            name = raw.get("name")
+            color = raw.get("color")
+            description = raw.get("description")
+            if all(isinstance(value, str) for value in (option_id, name, color, description)):
+                options.append(
+                    {
+                        "id": cast(str, option_id),
+                        "name": cast(str, name),
+                        "color": cast(str, color),
+                        "description": cast(str, description),
+                    }
+                )
+        return options
+
+    def reconcile_project_contract(self) -> JsonObject:
+        """Create missing Project fields/options without deleting existing configuration."""
+        project = self.project_snapshot()
+        configured_url = self._config.project.url
+        if configured_url and project.url.rstrip("/") != configured_url.rstrip("/"):
+            raise RuntimeError("configured GitHub Project URL does not match project number")
+
+        type_map = {
+            "single_select": "SINGLE_SELECT",
+            "number": "NUMBER",
+            "text": "TEXT",
+        }
+        create_mutation = """
+        mutation($input: CreateProjectV2FieldInput!) {
+          createProjectV2Field(input: $input) { clientMutationId }
+        }
+        """
+        update_mutation = """
+        mutation($input: UpdateProjectV2FieldInput!) {
+          updateProjectV2Field(input: $input) { clientMutationId }
+        }
+        """
+        created_fields: list[str] = []
+        added_options: dict[str, list[str]] = {}
+
+        for name, raw_contract in self._config.project.required_fields.items():
+            if not isinstance(raw_contract, dict):
+                raise RuntimeError(f"invalid Project field contract for {name!r}")
+            contract_type = raw_contract.get("type")
+            if not isinstance(contract_type, str) or contract_type not in type_map:
+                raise RuntimeError(f"unsupported Project field type for {name!r}")
+            expected_type = type_map[contract_type]
+            raw_options = raw_contract.get("options")
+            contract_options: list[str] = []
+            if raw_options is not None:
+                if not isinstance(raw_options, list) or not all(
+                    isinstance(item, str) and item for item in raw_options
+                ):
+                    raise RuntimeError(f"invalid Project options contract for {name!r}")
+                contract_options = cast(list[str], raw_options)
+
+            field = project.fields.get(name)
+            if field is None:
+                input_value: JsonObject = {
+                    "projectId": project.project_id,
+                    "dataType": expected_type,
+                    "name": name,
+                }
+                if expected_type == "SINGLE_SELECT":
+                    if not contract_options:
+                        raise RuntimeError(
+                            f"single-select Project field {name!r} requires at least one option"
+                        )
+                    input_value["singleSelectOptions"] = [
+                        {"name": option, "color": "GRAY", "description": ""}
+                        for option in contract_options
+                    ]
+                self._graphql(create_mutation, {"input": input_value})
+                created_fields.append(name)
+                continue
+
+            if field.data_type != expected_type:
+                raise RuntimeError(
+                    f"Project field {name!r} has type {field.data_type}, expected {expected_type}; "
+                    "bootstrap will not replace an existing field"
+                )
+            if expected_type != "SINGLE_SELECT" or not contract_options:
+                continue
+
+            missing = [option for option in contract_options if option not in field.options]
+            if not missing:
+                continue
+            existing = self._single_select_option_inputs(field.field_id)
+            by_name = {cast(str, option["name"]): option for option in existing}
+            merged: list[JsonObject] = []
+            for option_name in contract_options:
+                current = by_name.pop(option_name, None)
+                merged.append(
+                    current
+                    if current is not None
+                    else {"name": option_name, "color": "GRAY", "description": ""}
+                )
+            merged.extend(by_name.values())
+            self._graphql(
+                update_mutation,
+                {"input": {"fieldId": field.field_id, "singleSelectOptions": merged}},
+            )
+            added_options[name] = missing
+
+        final_project = self.project_snapshot()
+        errors = self.verify_project(final_project)
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        return {
+            "status": "configured",
+            "created_fields": created_fields,
+            "added_options": added_options,
+        }
+
     def verify_branch_rules(self) -> list[str]:
         """Verify active rules on main and reject any ruleset bypass actors."""
         errors: list[str] = []
