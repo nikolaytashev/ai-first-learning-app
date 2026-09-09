@@ -46,7 +46,7 @@ def main() -> None:
         '            prompt = f"""\n',
         '            self._set_project(feature, "In Review", "Approved", "QA", "Running")\n'
         "            completed_tasks = [\n"
-        "                {\"number\": c.number, \"title\": c.title, \"body\": c.body}\n"
+        '                {"number": c.number, "title": c.title, "body": c.body}\n'
         "                for c in tasks\n"
         "            ]\n"
         "            completed_tasks_json = json.dumps(completed_tasks, ensure_ascii=False)\n"
@@ -67,16 +67,14 @@ def main() -> None:
         "    state: RuntimeStateStore | None = None\n"
         "    notifier: Notifier | None = None\n"
         "    iteration_id: int | None = None\n",
-        "    state: RuntimeStateStore | None = None\n"
-        "    iteration_id: int | None = None\n",
+        "    state: RuntimeStateStore | None = None\n    iteration_id: int | None = None\n",
     )
     replace(
         "scripts/run_orchestrator.py",
         "        state = runtime_state\n"
         "        notifier = Notifier(settings.notifications)\n"
         "        waiting = workflow_state.latest_waiting()\n",
-        "        state = runtime_state\n"
-        "        waiting = workflow_state.latest_waiting()\n",
+        "        state = runtime_state\n        waiting = workflow_state.latest_waiting()\n",
     )
 
 

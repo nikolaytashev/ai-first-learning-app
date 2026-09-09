@@ -10,6 +10,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from scripts.orchestrator.codex import CodexCliRunner
 from scripts.orchestrator.config import load_config
@@ -423,7 +424,6 @@ def run_forever() -> int:
 def proposal() -> int:
     """Run the legacy autonomous proposal generator retained for compatibility."""
     state: RuntimeStateStore | None = None
-    notifier: Notifier | None = None
     iteration_id: int | None = None
     budget: IterationBudget | None = None
     now_utc = datetime.now(UTC)
@@ -432,7 +432,6 @@ def proposal() -> int:
         runtime_state = RuntimeStateStore(config.runtime.state_directory)
         workflow_state = StateStore(config.runtime.state_directory)
         state = runtime_state
-        notifier = Notifier(settings.notifications)
         waiting = workflow_state.latest_waiting()
         if waiting is not None:
             _print(_workflow_result(waiting))

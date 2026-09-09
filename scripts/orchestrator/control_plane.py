@@ -155,9 +155,12 @@ class ControlPlaneWorkflow:
             if metadata is not None and metadata.get("managed") is True:
                 artifact_type = metadata.get("type")
                 origin = metadata.get("origin")
-                if isinstance(artifact_type, str) and isinstance(origin, str):
-                    if artifact_type in {"Epic", "Feature", "Task"}:
-                        result.append(ManagedIssue(issue, artifact_type, origin, metadata))
+                if (
+                    isinstance(artifact_type, str)
+                    and isinstance(origin, str)
+                    and artifact_type in {"Epic", "Feature", "Task"}
+                ):
+                    result.append(ManagedIssue(issue, artifact_type, origin, metadata))
                 continue
             if issue.author not in humans:
                 continue
