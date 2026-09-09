@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 from collections.abc import Mapping
@@ -578,16 +579,50 @@ Completed child Tasks:
         return self._git(worktree, "rev-parse", "HEAD").stdout.strip()
 
     def _push(self, worktree: Path, branch: str) -> None:
-        env = dict(os.environ)
-        env["GIT_TERMINAL_PROMPT"] = "0"
-        completed = subprocess.run(
-            ["git", "push", "-u", "origin", f"HEAD:refs/heads/{branch}"],
-            cwd=worktree,
-            text=True,
-            capture_output=True,
-            check=False,
-            env=env,
-        )
+        token = self._github.token_provider.token()
+        self._config.runtime.state_directory.mkdir(parents=True, exist_ok=True)
+        askpass_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                prefix="git-askpass-",
+                suffix=".sh",
+                dir=self._config.runtime.state_directory,
+                delete=False,
+            ) as handle:
+                handle.write(
+                    "#!/bin/sh\n"
+                    'case "$1" in\n'
+                    "*Username*) printf '%s\\n' 'x-access-token' ;;\n"
+                    "*) printf '%s\\n' \"$ORCHESTRATOR_GIT_TOKEN\" ;;\n"
+                    "esac\n"
+                )
+                askpass_path = Path(handle.name)
+            askpass_path.chmod(0o700)
+            env = dict(os.environ)
+            env["GIT_TERMINAL_PROMPT"] = "0"
+            env["GIT_ASKPASS"] = str(askpass_path)
+            env["ORCHESTRATOR_GIT_TOKEN"] = token
+            remote = f"https://github.com/{self._config.repository.full_name}.git"
+            completed = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "credential.helper=",
+                    "push",
+                    remote,
+                    f"HEAD:refs/heads/{branch}",
+                ],
+                cwd=worktree,
+                text=True,
+                capture_output=True,
+                check=False,
+                env=env,
+            )
+        finally:
+            if askpass_path is not None:
+                askpass_path.unlink(missing_ok=True)
         if completed.returncode != 0:
             detail = (completed.stdout + completed.stderr)[-2000:]
             raise RuntimeError(f"git push failed: {detail}")

@@ -25,8 +25,7 @@ Before autonomous execution, the human owner must configure:
 - every Project field/option declared in `config/github.yaml`, including `Origin = Human|Agent`;
 - restricted automation identity and external credential provider;
 - active no-bypass repository ruleset protecting `main`;
-- local Codex CLI session authenticated through the approved provider;
-- local Git credentials capable of pushing only the intended non-default repository branches.
+- local Codex CLI session authenticated through the approved provider.
 
 The orchestrator verifies trusted GitHub/project/ruleset conditions with `doctor` and fails closed
 when it cannot prove them.
@@ -35,13 +34,14 @@ when it cannot prove them.
 
 `GITHUB_AUTOMATION_IDENTITY_TYPE` must be one of:
 
-- `github_app` — `GITHUB_TOKEN` is a repository-scoped GitHub App installation access token;
+- `github_app` — the checked-in non-secret Client ID plus an external PEM private key are used to
+  mint and refresh short-lived repository-scoped installation tokens;
 - `restricted_bot` — `GITHUB_TOKEN` belongs to the configured dedicated bot account and its login
   exactly matches `GITHUB_AUTOMATION_LOGIN`.
 
 A GitHub App is preferred for long-lived automation because installation can be repository-scoped
-and installation access tokens are short-lived. Token creation/refresh belongs to the external
-secret provider. Raw credentials must never be stored in the repository or forwarded to Codex.
+and installation access tokens are short-lived. The trusted worker creates and refreshes those
+tokens automatically. Raw credentials must never be stored in the repository or forwarded to Codex.
 
 The identity needs issue/comment/Project/sub-issue/dependency and draft-PR write permissions plus
 repository/rules read access. It must not have merge, release, deployment, secret, ruleset,
@@ -50,18 +50,34 @@ collaborator or visibility-management authority.
 ## Runtime environment
 
 Non-secret identifiers may be configured in `config/github.yaml` or supplied as environment
-overrides:
+overrides. The GitHub App Client ID is checked into `config/github.yaml` and normally needs no local
+override.
+
+The only required local GitHub App credential setting is:
+
+```text
+GITHUB_APP_PRIVATE_KEY_PATH
+```
+
+Optional overrides include:
 
 ```text
 GITHUB_PROJECT_NUMBER
 GITHUB_PROJECT_URL
 GITHUB_AUTOMATION_LOGIN
 GITHUB_AUTOMATION_IDENTITY_TYPE
+GITHUB_APP_CLIENT_ID
+GITHUB_APP_INSTALLATION_ID
 ORCHESTRATOR_STATE_DIRECTORY
 ```
 
-`GITHUB_TOKEN` is secret and must be injected by an external secret provider/environment. Do not
-put it in `.env`, command-line arguments, prompts, logs or the worktree.
+For `github_app`, keep the PEM private key outside the repository with restrictive filesystem
+permissions. `GITHUB_APP_INSTALLATION_ID` is optional because the worker can discover the App
+installation from the configured repository.
+
+For legacy `restricted_bot`, `GITHUB_TOKEN` is secret and must be injected by an external secret
+provider/environment. Do not put it in `.env`, command-line arguments, prompts, logs or the
+worktree.
 
 The Codex child environment strips GitHub/provider secrets, token-like variables, password-like
 variables and private-key material.
@@ -100,7 +116,7 @@ python scripts/run_orchestrator.py doctor
 - Project fields/options match the contract;
 - active `main` rules require PRs, conversation resolution, `repository-validation`,
   non-fast-forward protection and deletion protection;
-- active repository ruleset has no bypass actors;
+- the human-verified ruleset fingerprint has not changed and no bypass actors are present;
 - GitHub and runtime command prefixes agree.
 
 Resolve every blocked preflight result before starting continuous work.
@@ -153,8 +169,10 @@ review, then rechecks the Task and parent Feature approval digest before commit 
 push. If the Feature changed materially while an atomic action was running, the Task becomes stale
 and publication stops.
 
-Git push uses the local Git credential mechanism with terminal prompting disabled. Never embed
-`GITHUB_TOKEN` in a remote URL, command argument, prompt or agent environment.
+Git push uses the same short-lived GitHub App installation token as the API control plane. The token
+is supplied to git through a temporary `GIT_ASKPASS` helper, not a remote URL or command argument,
+and the helper is deleted immediately after the push. Personal local Git credentials are not used
+for autonomous publication.
 
 ## Restart and recovery behaviour
 

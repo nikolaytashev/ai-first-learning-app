@@ -199,12 +199,12 @@ local Markdown links, issue forms and required repository files.
 1. Configure the GitHub Project number and URL.
 2. Ensure the Project contains all fields/options in `config/github.yaml`, including the new
    `Origin` single-select field with `Human` and `Agent` options.
-3. Provision the restricted GitHub App or bot identity outside the repository.
+3. Create/install the repository-scoped GitHub App using `docs/autonomy/github-app-setup.md`.
 4. Keep the active no-bypass `Protect main` ruleset with PR requirement, conversation resolution,
    deletion/force-push protection and required `repository-validation` check.
 5. Install and authenticate Codex CLI on the local machine.
-6. Inject `GITHUB_TOKEN` from an external secret provider/environment; do not put it in the repo or
-   `.env` file.
+6. Keep the GitHub App private key outside the repository and set only
+   `GITHUB_APP_PRIVATE_KEY_PATH`; the non-secret Client ID is checked into `config/github.yaml`.
 7. Run `python scripts/run_orchestrator.py doctor` until it reports `ready`.
 8. Optionally run `python scripts/run_orchestrator.py iteration` for one controlled pass.
 9. Start `python scripts/run_orchestrator.py run` for continuous GitHub-controlled operation.

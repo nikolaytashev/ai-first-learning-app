@@ -9,6 +9,10 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from scripts.orchestrator.github_auth import (
+    GitHubTokenProvider,
+    StaticGitHubTokenProvider,
+)
 from scripts.orchestrator.model import (
     IssueComment,
     IssueRef,
@@ -43,11 +47,18 @@ class ProjectSnapshot:
 class GitHubClient:
     """GitHub REST/GraphQL adapter constrained to approved control-plane effects."""
 
-    def __init__(self, config: OrchestratorConfig, token: str) -> None:
-        if not token:
-            raise ValueError("GITHUB_TOKEN is required")
+    def __init__(
+        self,
+        config: OrchestratorConfig,
+        token: str | GitHubTokenProvider,
+    ) -> None:
         self._config = config
-        self._token = token
+        self._token_provider = StaticGitHubTokenProvider(token) if isinstance(token, str) else token
+
+    @property
+    def token_provider(self) -> GitHubTokenProvider:
+        """Return the trusted renewable credential provider used by this client."""
+        return self._token_provider
 
     def _request(
         self,
@@ -62,7 +73,7 @@ class GitHubClient:
             method=method,
             headers={
                 "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self._token}",
+                "Authorization": f"Bearer {self._token_provider.token()}",
                 "Content-Type": "application/json",
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": "ai-first-learning-local-orchestrator",
@@ -359,24 +370,21 @@ class GitHubClient:
                 f"main rules are missing required status checks: {sorted(missing_checks)}"
             )
 
-        rulesets_raw = self._rest("GET", f"/repos/{repo}/rulesets?includes_parents=false")
-        if not isinstance(rulesets_raw, list) or not rulesets_raw:
-            errors.append("repository has no active ruleset to protect main")
+        ruleset_id = self._config.branch_policy.verified_ruleset_id
+        detail = self._rest("GET", f"/repos/{repo}/rulesets/{ruleset_id}")
+        if not isinstance(detail, dict) or detail.get("enforcement") != "active":
+            errors.append(f"verified ruleset {ruleset_id} is missing or not active")
             return errors
-        active_found = False
-        for summary in rulesets_raw:
-            if not isinstance(summary, dict) or summary.get("enforcement") != "active":
-                continue
-            active_found = True
-            ruleset_id = summary.get("id")
-            if not isinstance(ruleset_id, int):
-                continue
-            detail = self._rest("GET", f"/repos/{repo}/rulesets/{ruleset_id}")
-            bypass = detail.get("bypass_actors") if isinstance(detail, dict) else None
-            if isinstance(bypass, list) and bypass:
-                errors.append(f"active ruleset {ruleset_id} contains bypass actors")
-        if not active_found:
-            errors.append("repository has no active ruleset to protect main")
+        updated_at = detail.get("updated_at")
+        expected_updated_at = self._config.branch_policy.verified_ruleset_updated_at
+        if updated_at != expected_updated_at:
+            errors.append(
+                "verified ruleset changed after human no-bypass verification; "
+                "re-verify it and update branch_policy.verified_ruleset_updated_at"
+            )
+        bypass = detail.get("bypass_actors")
+        if isinstance(bypass, list) and bypass:
+            errors.append(f"verified ruleset {ruleset_id} contains bypass actors")
         return errors
 
     def list_issues(self, *, state: str = "all") -> list[IssueSnapshot]:

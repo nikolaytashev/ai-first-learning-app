@@ -48,6 +48,7 @@ authorization:
     - nikolaytashev
   automation_login: null
   automation_identity_type: github_app
+  github_app_client_id: Iv23ling22Lvmau5uLUJ
   automation_identity_status: provisioning_required
   command_prefix: /orch
   accepted_commands:
@@ -72,6 +73,10 @@ branch_policy:
   required_status_checks:
     - repository-validation
   apply_to_administrators: true
+  # Human-verified on 2026-09-09 with bypass_actors=[] and current_user_can_bypass=never.
+  # The App only needs Metadata read; any ruleset mutation changes updated_at and fails doctor.
+  verified_ruleset_id: 22659425
+  verified_ruleset_updated_at: "2026-09-09T19:20:05.183+03:00"
 
 automation_permissions:
   allowed:
@@ -98,4 +103,4 @@ automation_permissions:
     - change_visibility
 
 bootstrap_blockers:
-  - Provision the repository-scoped GitHub App and inject its installation access token outside the repository.
+  - Install the repository-scoped GitHub App and configure its private key path outside the repository.

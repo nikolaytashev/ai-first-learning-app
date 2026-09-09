@@ -31,13 +31,16 @@ Prohibited capabilities:
 
 ## Credential isolation
 
-- Secrets enter only the trusted orchestrator process through an external secret
-  provider.
-- Agent subprocesses receive short-lived capability wrappers or prevalidated
-  tool operations, not raw tokens.
+- The GitHub App Client ID is non-secret and may be stored in repository
+  configuration.
+- The GitHub App PEM private key remains outside the repository and is available
+  only to the trusted orchestrator process.
+- Short-lived installation tokens are minted and refreshed in process and are
+  never persisted in repository files or worktrees.
+- Agent subprocesses receive no raw GitHub App private key or installation token.
 - Redact environment, command output and exceptions before logging.
-- Never store credentials in prompts, worktrees, issue text, artifacts or the
-  orchestration database.
+- Never store secret credentials in prompts, worktrees, issue text, artifacts or
+  the orchestration database.
 - Rotate credentials after suspected exposure and pause automation until the
   incident is reviewed.
 

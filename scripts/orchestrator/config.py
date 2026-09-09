@@ -145,10 +145,19 @@ def load_config(
     )
     if identity_type not in {None, "github_app", "restricted_bot"}:
         raise ValueError("GITHUB_AUTOMATION_IDENTITY_TYPE must be github_app or restricted_bot")
+    github_app_client_id = _env_or(
+        _optional_string(
+            authorization_raw.get("github_app_client_id"),
+            "authorization.github_app_client_id",
+        ),
+        "GITHUB_APP_CLIENT_ID",
+        env,
+    )
     authorization = AuthorizationSettings(
         human_approvers=tuple(cast(list[str], approvers_raw)),
         automation_login=automation_login,
         automation_identity_type=identity_type,
+        github_app_client_id=github_app_client_id,
         command_prefix=_string(
             authorization_raw.get("command_prefix", "/orch"),
             "authorization.command_prefix",
@@ -171,6 +180,14 @@ def load_config(
     branch_policy = BranchPolicySettings(
         protected_branches=tuple(cast(list[str], protected_raw)),
         required_status_checks=tuple(cast(list[str], checks_raw)),
+        verified_ruleset_id=_int(
+            branch_raw.get("verified_ruleset_id"),
+            "branch_policy.verified_ruleset_id",
+        ),
+        verified_ruleset_updated_at=_string(
+            branch_raw.get("verified_ruleset_updated_at"),
+            "branch_policy.verified_ruleset_updated_at",
+        ),
     )
 
     proposal_raw = _mapping(runtime_raw.get("proposal_workflow"), "proposal_workflow")
