@@ -252,8 +252,10 @@ class ControlPlaneWorkflow:
             for comment in comments
         )
         initial = int(metadata.get("revision", 0)) == 0
-        should_analyze = initial or force_analysis or (
-            self._settings.auto_reconcile_human_comments and normal_feedback
+        should_analyze = (
+            initial
+            or force_analysis
+            or (self._settings.auto_reconcile_human_comments and normal_feedback)
         )
         reconciled = False
         if should_analyze and metadata.get("approval") != "cancelled":
@@ -265,7 +267,9 @@ class ControlPlaneWorkflow:
         self._advance_comment_cursor(issue.number, metadata, comments)
         return reconciled, len(commands)
 
-    def _new_human_comments(self, issue_number: int, metadata: Mapping[str, Any]) -> list[IssueComment]:
+    def _new_human_comments(
+        self, issue_number: int, metadata: Mapping[str, Any]
+    ) -> list[IssueComment]:
         cursor = metadata.get("last_human_comment_id", 0)
         last_id = cursor if isinstance(cursor, int) else 0
         humans = set(self._config.authorization.human_approvers)
@@ -314,7 +318,9 @@ class ControlPlaneWorkflow:
                 metadata["paused"] = False
                 self._set_issue_metadata(issue.number, metadata)
                 self._set_project_status(issue, "Ready", "Approved", "Implementer", "Queued")
-                self._audit(issue.number, f"Task explicitly returned for rework: {command.argument}")
+                self._audit(
+                    issue.number, f"Task explicitly returned for rework: {command.argument}"
+                )
 
     def _apply_parent_command(
         self,
@@ -325,7 +331,9 @@ class ControlPlaneWorkflow:
         if command.name == "pause":
             metadata["paused"] = True
             self._set_issue_metadata(issue.number, metadata)
-            self._set_project_status(issue, "Blocked", self._approval_field(metadata), "Human", "Waiting")
+            self._set_project_status(
+                issue, "Blocked", self._approval_field(metadata), "Human", "Waiting"
+            )
             self._pause_children(issue.number)
             self._audit(issue.number, "Autonomous work paused by human command.")
         elif command.name == "resume":
@@ -350,7 +358,9 @@ class ControlPlaneWorkflow:
             raise RuntimeError("cannot approve a paused work item; resume it first")
         current_digest = metadata.get("current_digest")
         if not isinstance(current_digest, str) or not current_digest:
-            raise RuntimeError("cannot approve before PM/BA analysis has produced a current revision")
+            raise RuntimeError(
+                "cannot approve before PM/BA analysis has produced a current revision"
+            )
         if int(metadata.get("decisions_required_count", 0)) > 0:
             raise RuntimeError("cannot approve while decisions_required is non-empty")
         metadata["approval"] = "approved"
@@ -470,7 +480,9 @@ Canonical repository context:
             metadata["approval_digest"] = digest
         spec = self._render_analysis(analysis)
         updated_body = _replace_metadata(_replace_spec(issue.body, spec), metadata)
-        issue = self._github.update_issue(issue.number, title=cast(str, analysis["title"]), body=updated_body)
+        issue = self._github.update_issue(
+            issue.number, title=cast(str, analysis["title"]), body=updated_body
+        )
         approval = self._approval_field(metadata)
         status = "Awaiting Human" if approval != "Approved" else "In Progress"
         role = "Human" if approval != "Approved" else "Implementer"
@@ -609,11 +621,15 @@ Canonical repository context:
                     raise RuntimeError("an existing issue may appear only once in desired state")
                 used_numbers.add(existing)
             dependencies = item.get("dependencies")
-            graph[key] = [str(dep) for dep in dependencies] if isinstance(dependencies, list) else []
+            graph[key] = (
+                [str(dep) for dep in dependencies] if isinstance(dependencies, list) else []
+            )
         for key, dependencies in graph.items():
             for dependency in dependencies:
                 if dependency not in keys or dependency == key:
-                    raise RuntimeError("desired dependencies must reference other desired child keys")
+                    raise RuntimeError(
+                        "desired dependencies must reference other desired child keys"
+                    )
         visiting: set[str] = set()
         visited: set[str] = set()
 
@@ -637,7 +653,9 @@ Canonical repository context:
                 if not isinstance(number, int) or number not in current_numbers:
                     raise RuntimeError("BA may supersede only a current sub-issue")
                 if number in used_numbers:
-                    raise RuntimeError("desired and superseded work cannot reference the same issue")
+                    raise RuntimeError(
+                        "desired and superseded work cannot reference the same issue"
+                    )
         classification = analysis.get("change_classification")
         impact = plan.get("approval_impact")
         required = {
@@ -660,7 +678,9 @@ Canonical repository context:
         impact = plan.get("approval_impact")
         if impact == "cancel":
             reason = analysis.get("cancellation_reason")
-            self._cancel_tree(parent, metadata, str(reason or "Feature cancelled by human decision"))
+            self._cancel_tree(
+                parent, metadata, str(reason or "Feature cancelled by human decision")
+            )
             return
         if impact in {"invalidate", "decision_required"}:
             metadata["approval"] = "pending"
@@ -696,7 +716,9 @@ Canonical repository context:
                     child.number,
                     title=cast(str, item["title"]),
                     body=body,
-                    state="open" if child.state == "closed" and child.state_reason == "not_planned" else None,
+                    state="open"
+                    if child.state == "closed" and child.state_reason == "not_planned"
+                    else None,
                 )
             else:
                 child_meta = self._new_metadata(
@@ -758,7 +780,9 @@ Canonical repository context:
             desired_blocker_ids = {
                 resolved[cast(str, key)].id for key in cast(list[str], item["dependencies"])
             }
-            current_blockers = {blocker.id: blocker for blocker in self._github.list_blockers(child.number)}
+            current_blockers = {
+                blocker.id: blocker for blocker in self._github.list_blockers(child.number)
+            }
             for blocker_id in desired_blocker_ids - set(current_blockers):
                 self._github.add_blocker(child.number, blocker_id)
             for blocker_id in set(current_blockers) - desired_blocker_ids:
@@ -767,7 +791,9 @@ Canonical repository context:
 
     def _child_body(self, body: str, metadata: JsonObject, item: Mapping[str, Any]) -> str:
         criteria = item.get("acceptance_criteria")
-        criteria_lines = [f"- [ ] {criterion}" for criterion in criteria] if isinstance(criteria, list) else []
+        criteria_lines = (
+            [f"- [ ] {criterion}" for criterion in criteria] if isinstance(criteria, list) else []
+        )
         spec = "\n".join(
             [
                 "## Managed specification",
@@ -854,7 +880,10 @@ Canonical repository context:
 
     def _cancel_issue(self, issue: IssueSnapshot, metadata: JsonObject, reason: str) -> None:
         if issue.state == "closed" and issue.state_reason == "completed":
-            self._audit(issue.number, f"Cancellation requested but merged/completed history preserved: {reason}")
+            self._audit(
+                issue.number,
+                f"Cancellation requested but merged/completed history preserved: {reason}",
+            )
             return
         metadata["approval"] = "cancelled"
         metadata["paused"] = True
@@ -1003,7 +1032,9 @@ Canonical repository context:
         last_error: RuntimeError | None = None
         started = time.monotonic()
         for attempt in range(1, self._config.runtime.max_role_attempts + 1):
-            remaining = int(self._config.runtime.proposal_elapsed_seconds - (time.monotonic() - started))
+            remaining = int(
+                self._config.runtime.proposal_elapsed_seconds - (time.monotonic() - started)
+            )
             if remaining < 1:
                 raise RuntimeError("control-plane role exhausted elapsed-time budget")
             model = select_model(

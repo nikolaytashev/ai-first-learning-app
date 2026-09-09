@@ -72,7 +72,9 @@ def selected_commands(root: Path, changed_files: list[str]) -> list[tuple[str, s
         if not isinstance(name, str) or not isinstance(raw_profile, Mapping):
             continue
         patterns_raw = raw_profile.get("path_patterns")
-        patterns = [str(pattern) for pattern in patterns_raw] if isinstance(patterns_raw, list) else []
+        patterns = (
+            [str(pattern) for pattern in patterns_raw] if isinstance(patterns_raw, list) else []
+        )
         matches = any(
             fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(f"/{path}", f"/{pattern}")
             for path in changed_files

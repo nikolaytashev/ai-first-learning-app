@@ -302,7 +302,9 @@ class GitHubClient:
                 "number": "NUMBER",
                 "text": "TEXT",
             }
-            expected_github_type = type_map.get(expected_type) if isinstance(expected_type, str) else None
+            expected_github_type = (
+                type_map.get(expected_type) if isinstance(expected_type, str) else None
+            )
             if expected_github_type and field.data_type != expected_github_type:
                 errors.append(
                     f"Project field {name!r} has type {field.data_type}, "
@@ -353,7 +355,9 @@ class GitHubClient:
                         contexts.add(cast(str, check["context"]))
         missing_checks = set(self._config.branch_policy.required_status_checks) - contexts
         if missing_checks:
-            errors.append(f"main rules are missing required status checks: {sorted(missing_checks)}")
+            errors.append(
+                f"main rules are missing required status checks: {sorted(missing_checks)}"
+            )
 
         rulesets_raw = self._rest("GET", f"/repos/{repo}/rulesets?includes_parents=false")
         if not isinstance(rulesets_raw, list) or not rulesets_raw:
@@ -723,4 +727,6 @@ class GitHubClient:
     def close_pull_request(self, number: int) -> PullRequestSnapshot:
         """Close an orchestrator-owned draft PR without merging it."""
         repo = self._config.repository.full_name
-        return self._pull_request(self._rest("PATCH", f"/repos/{repo}/pulls/{number}", {"state": "closed"}))
+        return self._pull_request(
+            self._rest("PATCH", f"/repos/{repo}/pulls/{number}", {"state": "closed"})
+        )

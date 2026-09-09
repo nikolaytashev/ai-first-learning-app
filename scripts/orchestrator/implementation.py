@@ -10,7 +10,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from scripts.orchestrator.codex import CodexCliRunner
 from scripts.orchestrator.config import select_model
@@ -74,7 +74,9 @@ class ImplementationWorkflow:
             pr = self._github.get_pull_request(pr_number)
             marker = f"<!-- orch-task:{task.number} -->"
             if marker not in pr.body:
-                raise RuntimeError(f"refusing to manage PR #{pr.number} without task ownership marker")
+                raise RuntimeError(
+                    f"refusing to manage PR #{pr.number} without task ownership marker"
+                )
             if metadata.get("execution_state") == "cancelled" and pr.state == "open" and pr.draft:
                 self._github.close_pull_request(pr.number)
                 changed += 1
@@ -83,16 +85,26 @@ class ImplementationWorkflow:
                 metadata["execution_state"] = "done"
                 metadata["merged_pr"] = pr.number
                 self._update_metadata(task.number, metadata)
-                updated = self._github.update_issue(task.number, state="closed", state_reason="completed")
+                updated = self._github.update_issue(
+                    task.number, state="closed", state_reason="completed"
+                )
                 self._set_project(updated, "Done", "Approved", "Human", "Completed")
-                self._audit(task.number, f"Draft PR #{pr.number} was merged by a human; Task completed.")
+                self._audit(
+                    task.number, f"Draft PR #{pr.number} was merged by a human; Task completed."
+                )
                 changed += 1
-            elif pr.state == "closed" and pr.merged_at is None and metadata.get("execution_state") == "awaiting_merge":
+            elif (
+                pr.state == "closed"
+                and pr.merged_at is None
+                and metadata.get("execution_state") == "awaiting_merge"
+            ):
                 metadata["execution_state"] = "rework"
                 metadata["pr_number"] = None
                 self._update_metadata(task.number, metadata)
                 self._set_project(task, "Ready", "Approved", "Implementer", "Queued")
-                self._audit(task.number, f"PR #{pr.number} closed without merge; Task returned to rework.")
+                self._audit(
+                    task.number, f"PR #{pr.number} closed without merge; Task returned to rework."
+                )
                 changed += 1
         return changed
 
@@ -204,7 +216,9 @@ class ImplementationWorkflow:
                 if pr is None:
                     pr = self._github.create_draft_pull_request(
                         title=f"Implement #{task.number}: {task.title}",
-                        body=self._pull_request_body(task, metadata, workflow_id, validation, commit_sha),
+                        body=self._pull_request_body(
+                            task, metadata, workflow_id, validation, commit_sha
+                        ),
                         head=branch,
                         base=self._config.repository.default_branch,
                     )
@@ -230,7 +244,9 @@ class ImplementationWorkflow:
             metadata["execution_state"] = "stale"
             self._update_metadata(task.number, metadata)
             self._set_project(task, "Blocked", "Pending", "Human", "Waiting")
-            self._audit(task.number, f"Implementation stopped before publish because scope changed: {exc}")
+            self._audit(
+                task.number, f"Implementation stopped before publish because scope changed: {exc}"
+            )
             return {"status": "stale", "issue_number": task.number, "reason": str(exc)}
         finally:
             self._remove_worktree(worktree)
@@ -265,7 +281,7 @@ Approved parent Feature:
 {parent.body}
 
 Corrective feedback from deterministic validation/QA/review:
-{feedback or 'none; perform the initial implementation'}
+{feedback or "none; perform the initial implementation"}
 
 Cycle: {cycle}
 Implement the smallest complete change satisfying every Task acceptance criterion. Add/update tests.
@@ -293,7 +309,9 @@ Return exactly one JSON object matching the supplied schema after modifying the 
         validation: ValidationRun,
     ) -> JsonObject:
         parent = self._parent(task)
-        diff = self._git(worktree, "diff", "--no-ext-diff", "origin/main...HEAD", check=False).stdout
+        diff = self._git(
+            worktree, "diff", "--no-ext-diff", "origin/main...HEAD", check=False
+        ).stdout
         if not diff.strip():
             diff = self._git(worktree, "diff", "--no-ext-diff").stdout
         role_name = "QA" if role == "qa" else "Reviewer"
@@ -423,7 +441,11 @@ Candidate diff:
         result: list[IssueSnapshot] = []
         for issue in self._github.list_issues(state=state):
             metadata = parse_metadata(issue.body)
-            if metadata is not None and metadata.get("managed") is True and metadata.get("type") == "Task":
+            if (
+                metadata is not None
+                and metadata.get("managed") is True
+                and metadata.get("type") == "Task"
+            ):
                 result.append(issue)
         return result
 
@@ -432,11 +454,21 @@ Candidate diff:
         verified = 0
         for feature in self._github.list_issues(state="open"):
             metadata = parse_metadata(feature.body)
-            if metadata is None or metadata.get("type") != "Feature" or metadata.get("approval") != "approved":
+            if (
+                metadata is None
+                or metadata.get("type") != "Feature"
+                or metadata.get("approval") != "approved"
+            ):
                 continue
             children = self._github.list_sub_issues(feature.number)
-            tasks = [child for child in children if (parse_metadata(child.body) or {}).get("type") == "Task"]
-            if not tasks or any(child.state != "closed" or child.state_reason != "completed" for child in tasks):
+            tasks = [
+                child
+                for child in children
+                if (parse_metadata(child.body) or {}).get("type") == "Task"
+            ]
+            if not tasks or any(
+                child.state != "closed" or child.state_reason != "completed" for child in tasks
+            ):
                 continue
             self._set_project(feature, "In Review", "Approved", "QA", "Running")
             prompt = f"""
@@ -470,9 +502,13 @@ Completed child Tasks:
             if review.get("verdict") == "passed":
                 metadata["execution_state"] = "done"
                 self._update_metadata(feature.number, metadata)
-                closed = self._github.update_issue(feature.number, state="closed", state_reason="completed")
+                closed = self._github.update_issue(
+                    feature.number, state="closed", state_reason="completed"
+                )
                 self._set_project(closed, "Done", "Approved", "Human", "Completed")
-                self._audit(feature.number, "Feature-level QA passed after all child Tasks completed.")
+                self._audit(
+                    feature.number, "Feature-level QA passed after all child Tasks completed."
+                )
                 verified += 1
             else:
                 findings = self._review_feedback("Feature QA", review)
@@ -493,7 +529,11 @@ Completed child Tasks:
             f"refs/heads/{branch}",
             check=False,
         )
-        base = f"origin/{branch}" if remote.returncode == 0 else f"origin/{self._config.repository.default_branch}"
+        base = (
+            f"origin/{branch}"
+            if remote.returncode == 0
+            else f"origin/{self._config.repository.default_branch}"
+        )
         self._git(self._root, "worktree", "add", "-B", branch, str(worktree), base)
 
     def _remove_worktree(self, worktree: Path) -> None:

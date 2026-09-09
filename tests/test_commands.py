@@ -4,7 +4,6 @@ import pytest
 
 from scripts.orchestrator.commands import parse_commands, validate_command
 
-
 ACCEPTED = ("analyze", "replan", "approve", "pause", "resume", "cancel", "priority", "rework")
 
 
