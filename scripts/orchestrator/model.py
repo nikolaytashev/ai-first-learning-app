@@ -125,6 +125,7 @@ class AuthorizationSettings:
     human_approvers: tuple[str, ...]
     automation_login: str | None
     automation_identity_type: str | None
+    github_app_client_id: str | None
     command_prefix: str
     accepted_commands: tuple[str, ...]
 
