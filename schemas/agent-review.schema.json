@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/agent-review.schema.json",
+  "title": "Independent Agent Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workflow_id", "issue_number", "role", "verdict", "summary", "findings", "provenance"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "workflow_id": {"type": "string", "minLength": 1},
+    "issue_number": {"type": "integer", "minimum": 1},
+    "role": {"enum": ["qa", "reviewer"]},
+    "verdict": {"enum": ["passed", "changes_required", "blocked"]},
+    "summary": {"type": "string", "minLength": 3},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "reference", "description", "required_action"],
+        "properties": {
+          "severity": {"enum": ["info", "minor", "major", "critical"]},
+          "reference": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 3},
+          "required_action": {"type": "string", "minLength": 3}
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "agent_version", "generated_at"],
+      "properties": {
+        "role": {"enum": ["qa", "reviewer"]},
+        "agent_version": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}
