@@ -7,10 +7,11 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -48,7 +49,7 @@ class GitHubAppTokenProvider:
         private_key_path: Path,
         repository_full_name: str,
         installation_id: int | None = None,
-        now: callable[[], datetime] | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         if not client_id:
             raise ValueError("GITHUB_APP_CLIENT_ID is required for github_app")
@@ -154,9 +155,22 @@ class GitHubAppTokenProvider:
         return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
 
+def _outside_repository(path: Path, root: Path | None) -> Path:
+    resolved = path.expanduser().resolve()
+    if root is None:
+        return resolved
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError:
+        return resolved
+    raise ValueError("GitHub App private key must be stored outside the repository")
+
+
 def load_github_token_provider(
     config: OrchestratorConfig,
-    environment: dict[str, str] | None = None,
+    environment: Mapping[str, str] | None = None,
+    *,
+    root: Path | None = None,
 ) -> GitHubTokenProvider:
     """Resolve the configured GitHub identity without persisting credentials in the repository."""
     env = os.environ if environment is None else environment
@@ -170,6 +184,8 @@ def load_github_token_provider(
     key_path_raw = env.get("GITHUB_APP_PRIVATE_KEY_PATH", "")
     if not key_path_raw:
         raise ValueError("GITHUB_APP_PRIVATE_KEY_PATH is required for github_app")
+    private_key_path = _outside_repository(Path(key_path_raw), root)
+
     installation_raw = env.get("GITHUB_APP_INSTALLATION_ID", "")
     installation_id: int | None = None
     if installation_raw:
@@ -182,7 +198,7 @@ def load_github_token_provider(
 
     return GitHubAppTokenProvider(
         client_id=client_id,
-        private_key_path=Path(key_path_raw).expanduser(),
+        private_key_path=private_key_path,
         repository_full_name=config.repository.full_name,
         installation_id=installation_id,
     )
