@@ -15,15 +15,6 @@ authority.
 Use a dedicated GitHub App or restricted bot identity for automation. Its
 installation should be limited to this repository.
 
-The preferred GitHub App receives only:
-
-- Contents: read/write;
-- Issues: read/write;
-- Pull requests: read/write;
-- Checks: read-only;
-- Metadata: read-only;
-- Projects: read/write.
-
 Required capabilities:
 
 - Read repository metadata, issues, comments, Project configuration and checks.
@@ -40,29 +31,18 @@ Prohibited capabilities:
 
 ## Credential isolation
 
-- The GitHub App Client ID is non-secret configuration.
-- The GitHub App PEM private key is long-lived secret material and must be kept
-  outside the repository with restrictive filesystem permissions.
-- The trusted process uses the private key only to sign short-lived App JWTs and
-  mint repository-scoped installation access tokens.
-- Installation tokens are cached only in process memory and refreshed before
-  expiry; they are never persisted.
-- Autonomous Git pushes use the same restricted App token through a temporary
-  `GIT_ASKPASS` helper, preventing fallback to the human owner's Git identity.
-- Agent subprocesses receive neither the private key nor installation tokens.
+- The GitHub App Client ID is non-secret and may be stored in repository
+  configuration.
+- The GitHub App PEM private key remains outside the repository and is available
+  only to the trusted orchestrator process.
+- Short-lived installation tokens are minted and refreshed in process and are
+  never persisted in repository files or worktrees.
+- Agent subprocesses receive no raw GitHub App private key or installation token.
 - Redact environment, command output and exceptions before logging.
-- Never store credentials in prompts, worktrees, issue text, artifacts or the
-  orchestration database.
-- Rotate the App private key after suspected exposure and pause automation until
-  the incident is reviewed.
-
-## Ruleset integrity without admin authority
-
-The automation identity must not receive repository Administration permission
-merely to inspect bypass configuration. The human owner verifies the no-bypass
-ruleset, then commits its immutable ID and current `updated_at` fingerprint.
-`doctor` verifies effective branch rules and fails if that fingerprint changes,
-forcing a new human verification before autonomous execution can resume.
+- Never store secret credentials in prompts, worktrees, issue text, artifacts or
+  the orchestration database.
+- Rotate credentials after suspected exposure and pause automation until the
+  incident is reviewed.
 
 ## Prompt-injection controls
 
