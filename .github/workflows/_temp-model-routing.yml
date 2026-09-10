@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/_temp_model_routing_patch.py
       - scripts/_temp_model_routing_patch_fix.py
+      - scripts/_temp_model_routing_test_fix.py
       - .github/workflows/_temp-model-routing.yml
 
 permissions:
@@ -28,11 +29,12 @@ jobs:
       - name: Apply patch
         run: |
           python scripts/_temp_model_routing_patch_fix.py
+          python scripts/_temp_model_routing_test_fix.py
           python scripts/_temp_model_routing_patch.py
       - name: Format
         run: ruff format scripts tests
       - name: Remove temporary files
-        run: rm scripts/_temp_model_routing_patch.py scripts/_temp_model_routing_patch_fix.py .github/workflows/_temp-model-routing.yml
+        run: rm scripts/_temp_model_routing_patch.py scripts/_temp_model_routing_patch_fix.py scripts/_temp_model_routing_test_fix.py .github/workflows/_temp-model-routing.yml
       - name: Validate
         run: |
           python scripts/validate_repository.py
