@@ -339,7 +339,7 @@ uninstall_orchestrator() {
   rm -f "$AUTOSTART_PLIST" "$LAUNCHD_PLIST"
   remove_global_command
 
-  if ask_yes_no "Also remove local secrets, logs, state, and Python runtime (.local/ and .venv)?"; then
+  if ask_yes_no "Also remove local secrets, logs, and Python runtime (.local/ and .venv)?"; then
     rm -rf "$LOCAL_DIR" "$VENV_DIR"
     printf 'Orchestrator uninstalled and local runtime data removed.\n'
   else
