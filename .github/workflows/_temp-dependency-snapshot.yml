@@ -6,6 +6,7 @@ on:
       - autonomy/runtime-completion
     paths:
       - scripts/_temp_dependency_snapshot_patch.py
+      - scripts/_temp_dependency_snapshot_fix.py
       - .github/workflows/_temp-dependency-snapshot.yml
 
 permissions:
@@ -25,11 +26,13 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -r requirements-dev.lock
       - name: Apply patch
-        run: python scripts/_temp_dependency_snapshot_patch.py
+        run: |
+          python scripts/_temp_dependency_snapshot_fix.py
+          python scripts/_temp_dependency_snapshot_patch.py
       - name: Format
         run: ruff format scripts tests
       - name: Remove temporary files
-        run: rm scripts/_temp_dependency_snapshot_patch.py .github/workflows/_temp-dependency-snapshot.yml
+        run: rm scripts/_temp_dependency_snapshot_patch.py scripts/_temp_dependency_snapshot_fix.py .github/workflows/_temp-dependency-snapshot.yml
       - name: Validate
         run: |
           python scripts/validate_repository.py
