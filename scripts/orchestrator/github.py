@@ -75,9 +75,18 @@ class GitHubClient:
         self,
         config: OrchestratorConfig,
         token: str | GitHubTokenProvider,
+        project_token: str | GitHubTokenProvider | None = None,
     ) -> None:
         self._config = config
         self._token_provider = StaticGitHubTokenProvider(token) if isinstance(token, str) else token
+        if project_token is None:
+            self._project_token_provider = self._token_provider
+        else:
+            self._project_token_provider = (
+                StaticGitHubTokenProvider(project_token, "GITHUB_PROJECT_TOKEN")
+                if isinstance(project_token, str)
+                else project_token
+            )
 
     @property
     def token_provider(self) -> GitHubTokenProvider:
@@ -89,15 +98,18 @@ class GitHubClient:
         method: str,
         url: str,
         payload: JsonObject | None = None,
+        *,
+        token_provider: GitHubTokenProvider | None = None,
     ) -> Any:
         data = None if payload is None else json.dumps(payload).encode("utf-8")
+        provider = token_provider or self._token_provider
         request = Request(
             url,
             data=data,
             method=method,
             headers={
                 "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self._token_provider.token()}",
+                "Authorization": f"Bearer {provider.token()}",
                 "Content-Type": "application/json",
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": "ai-first-learning-local-orchestrator",
@@ -119,7 +131,23 @@ class GitHubClient:
         return self._request(method, f"{_API}{path}", payload)
 
     def _graphql(self, query: str, variables: JsonObject) -> JsonObject:
-        raw = self._request("POST", _GRAPHQL, {"query": query, "variables": variables})
+        return self._graphql_with_provider(query, variables, self._token_provider)
+
+    def _project_graphql(self, query: str, variables: JsonObject) -> JsonObject:
+        return self._graphql_with_provider(query, variables, self._project_token_provider)
+
+    def _graphql_with_provider(
+        self,
+        query: str,
+        variables: JsonObject,
+        token_provider: GitHubTokenProvider,
+    ) -> JsonObject:
+        raw = self._request(
+            "POST",
+            _GRAPHQL,
+            {"query": query, "variables": variables},
+            token_provider=token_provider,
+        )
         if not isinstance(raw, dict):
             raise RuntimeError("GitHub GraphQL response must be an object")
         response = cast(JsonObject, raw)
@@ -264,7 +292,7 @@ class GitHubClient:
           }}
         }}
         """
-        data = self._graphql(
+        data = self._project_graphql(
             query,
             {"login": self._config.project.owner, "number": number},
         )
@@ -353,7 +381,7 @@ class GitHubClient:
           }
         }
         """
-        data = self._graphql(query, {"id": field_id})
+        data = self._project_graphql(query, {"id": field_id})
         node = data.get("node")
         raw_options = node.get("options") if isinstance(node, dict) else None
         if not isinstance(raw_options, list):
@@ -434,7 +462,7 @@ class GitHubClient:
                         {"name": option, "color": "GRAY", "description": ""}
                         for option in contract_options
                     ]
-                self._graphql(create_mutation, {"input": input_value})
+                self._project_graphql(create_mutation, {"input": input_value})
                 created_fields.append(name)
                 continue
 
@@ -460,7 +488,7 @@ class GitHubClient:
                     else {"name": option_name, "color": "GRAY", "description": ""}
                 )
             merged.extend(by_name.values())
-            self._graphql(
+            self._project_graphql(
                 update_mutation,
                 {"input": {"fieldId": field.field_id, "singleSelectOptions": merged}},
             )
@@ -750,7 +778,7 @@ class GitHubClient:
           }
         }
         """
-        data = self._graphql(query, {"project": project_id, "content": issue_node_id})
+        data = self._project_graphql(query, {"project": project_id, "content": issue_node_id})
         payload = data.get("addProjectV2ItemById")
         item = payload.get("item") if isinstance(payload, dict) else None
         item_id = item.get("id") if isinstance(item, dict) else None
@@ -769,7 +797,7 @@ class GitHubClient:
           }
         }
         """
-        data = self._graphql(
+        data = self._project_graphql(
             query,
             {
                 "owner": self._config.repository.owner,
@@ -836,7 +864,7 @@ class GitHubClient:
                 field_value = {"text": str(value)}
             else:
                 raise RuntimeError(f"unsupported Project field type {field.data_type}")
-            self._graphql(
+            self._project_graphql(
                 mutation,
                 {
                     "input": {

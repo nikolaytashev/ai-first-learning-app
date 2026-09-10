@@ -50,25 +50,16 @@ local override.
 After creating the App:
 
 1. Generate one private key from the App settings page.
-2. Move the downloaded PEM outside the repository, for example:
-
-   ```bash
-   mkdir -p ~/.config/ai-first-learning
-   mv ~/Downloads/*.private-key.pem ~/.config/ai-first-learning/github-app.pem
-   chmod 600 ~/.config/ai-first-learning/github-app.pem
-   ```
-
-3. Configure the trusted orchestrator shell/service:
-
-   ```bash
-   export GITHUB_APP_PRIVATE_KEY_PATH="$HOME/.config/ai-first-learning/github-app.pem"
-   ```
+2. Create a personal access token (classic) with only the `project` scope for the user-owned Project.
+3. From the repository root run `./orch init` once. It asks for the downloaded PEM path and Project
+   token, copies the PEM to `.local/github-app.pem`, writes `.local/orchestrator.env`, sets restrictive
+   permissions and prepares `.venv`. The complete `.local/` directory is gitignored.
 
 `GITHUB_APP_INSTALLATION_ID` is optional; the worker discovers the installation from the configured
 repository when it is omitted.
 
-Never paste the PEM private-key contents into an issue, pull request, chat, log, `.env` file or
-repository file.
+Never paste either secret into an issue, pull request, chat or tracked repository file. Do not grant
+the Project token `repo` scope.
 
 ## Verification
 
@@ -76,7 +67,7 @@ From a clean `main` checkout after the GitHub App runtime-auth changes are merge
 
 ```bash
 openssl version
-python scripts/run_orchestrator.py doctor
+./orch doctor
 ```
 
 Do not start `iteration` or `run` until `doctor` reports `status: ready`.

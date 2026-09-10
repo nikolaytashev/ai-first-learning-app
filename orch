@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+LOCAL_DIR="$ROOT/.local"
+ENV_FILE="$LOCAL_DIR/orchestrator.env"
+KEY_FILE="$LOCAL_DIR/github-app.pem"
+VENV_DIR="$ROOT/.venv"
+PYTHON="$VENV_DIR/bin/python"
+REQUIREMENTS_MARKER="$VENV_DIR/.requirements-installed"
+
+fail() {
+  printf 'orchestrator: %s\n' "$*" >&2
+  exit 1
+}
+
+require_python() {
+  command -v python3 >/dev/null 2>&1 || fail "python3 is required (Python 3.12+)"
+  python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' \
+    || fail "Python 3.12+ is required"
+}
+
+ensure_runtime() {
+  require_python
+  if [[ ! -x "$PYTHON" ]]; then
+    python3 -m venv "$VENV_DIR"
+  fi
+  if [[ ! -f "$REQUIREMENTS_MARKER" || "$ROOT/requirements-dev.lock" -nt "$REQUIREMENTS_MARKER" ]]; then
+    "$PYTHON" -m pip install -r "$ROOT/requirements-dev.lock"
+    touch "$REQUIREMENTS_MARKER"
+  fi
+}
+
+initialize_local_secrets() {
+  mkdir -p "$LOCAL_DIR"
+  chmod 700 "$LOCAL_DIR"
+
+  if [[ ! -f "$KEY_FILE" ]]; then
+    printf 'Path to the GitHub App PEM private key: '
+    IFS= read -r source_key
+    [[ -n "$source_key" ]] || fail "PEM path is required"
+    source_key="${source_key/#\~/$HOME}"
+    [[ -f "$source_key" ]] || fail "PEM file not found: $source_key"
+    cp "$source_key" "$KEY_FILE"
+  fi
+  chmod 600 "$KEY_FILE"
+
+  printf 'GitHub Project token (classic PAT, project scope only): '
+  IFS= read -r -s project_token
+  printf '\n'
+  [[ -n "$project_token" ]] || fail "Project token is required"
+  printf 'GITHUB_PROJECT_TOKEN=%q\n' "$project_token" > "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+
+  ensure_runtime
+  printf 'Local orchestrator runtime initialized. Secrets are stored only in %s\n' "$LOCAL_DIR"
+  printf 'Run ./orch doctor, ./orch project-bootstrap, or ./orch (continuous run).\n'
+}
+
+if [[ "${1:-}" == "init" ]]; then
+  shift
+  [[ $# -eq 0 ]] || fail "init does not accept additional arguments"
+  initialize_local_secrets
+  exit 0
+fi
+
+[[ -f "$ENV_FILE" ]] || fail "missing $ENV_FILE; run ./orch init once"
+[[ -f "$KEY_FILE" ]] || fail "missing $KEY_FILE; run ./orch init once"
+chmod 700 "$LOCAL_DIR"
+chmod 600 "$ENV_FILE" "$KEY_FILE"
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+export GITHUB_APP_PRIVATE_KEY_PATH="$KEY_FILE"
+
+ensure_runtime
+
+if [[ $# -eq 0 ]]; then
+  set -- run
+fi
+exec "$PYTHON" -m scripts.run_orchestrator "$@"

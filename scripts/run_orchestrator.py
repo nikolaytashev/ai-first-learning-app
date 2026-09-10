@@ -15,7 +15,10 @@ from scripts.orchestrator.codex import CodexCliRunner
 from scripts.orchestrator.config import load_config
 from scripts.orchestrator.control_plane import ControlPlaneWorkflow
 from scripts.orchestrator.github import GitHubClient
-from scripts.orchestrator.github_auth import load_github_token_provider
+from scripts.orchestrator.github_auth import (
+    load_github_token_provider,
+    load_project_token_provider,
+)
 from scripts.orchestrator.implementation import ImplementationWorkflow
 from scripts.orchestrator.model import OrchestratorConfig
 from scripts.orchestrator.notifications import Notifier
@@ -112,7 +115,8 @@ def _trusted_github() -> tuple[OrchestratorConfig, RuntimePolicySettings, GitHub
     load_implementation_settings(ROOT)
     load_usage_guard_settings(ROOT)
     token_provider = load_github_token_provider(config, root=ROOT)
-    github = GitHubClient(config, token_provider)
+    project_provider = load_project_token_provider(config, token_provider)
+    github = GitHubClient(config, token_provider, project_provider)
     errors = preflight_errors(ROOT, config, github)
     if errors:
         raise RuntimeError("; ".join(errors))
@@ -142,7 +146,8 @@ def project_bootstrap() -> int:
     try:
         config = load_config(ROOT)
         token_provider = load_github_token_provider(config, root=ROOT)
-        github = GitHubClient(config, token_provider)
+        project_provider = load_project_token_provider(config, token_provider)
+        github = GitHubClient(config, token_provider, project_provider)
         errors = github.verify_identity_and_scope()
         if errors:
             raise RuntimeError("; ".join(errors))

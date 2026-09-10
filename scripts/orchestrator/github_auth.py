@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import shutil
+import stat
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -29,13 +30,14 @@ class GitHubTokenProvider(Protocol):
 
 @dataclass(frozen=True)
 class StaticGitHubTokenProvider:
-    """Static token provider retained for the restricted-bot identity mode."""
+    """Static credential provider for externally injected long-lived tokens."""
 
     value: str
+    variable_name: str = "GITHUB_TOKEN"
 
     def token(self) -> str:
         if not self.value:
-            raise ValueError("GITHUB_TOKEN is required for restricted_bot")
+            raise ValueError(f"{self.variable_name} is required")
         return self.value
 
 
@@ -159,15 +161,27 @@ class GitHubAppTokenProvider:
         return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
 
-def _outside_repository(path: Path, root: Path | None) -> Path:
+def _trusted_private_key_path(path: Path, root: Path | None) -> Path:
+    """Allow the PEM outside the repo or inside the explicitly ignored local secret directory."""
     resolved = path.expanduser().resolve()
-    if root is None:
-        return resolved
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError:
-        return resolved
-    raise ValueError("GitHub App private key must be stored outside the repository")
+    if root is not None:
+        repository_root = root.resolve()
+        try:
+            resolved.relative_to(repository_root)
+        except ValueError:
+            pass
+        else:
+            local_secret_root = repository_root / ".local"
+            try:
+                resolved.relative_to(local_secret_root)
+            except ValueError as exc:
+                raise ValueError(
+                    "GitHub App private key inside the repository must be stored under .local/"
+                ) from exc
+
+    if resolved.exists() and stat.S_IMODE(resolved.stat().st_mode) & 0o077:
+        raise ValueError("GitHub App private key permissions must not allow group/world access")
+    return resolved
 
 
 def load_github_token_provider(
@@ -188,7 +202,7 @@ def load_github_token_provider(
     key_path_raw = env.get("GITHUB_APP_PRIVATE_KEY_PATH", "")
     if not key_path_raw:
         raise ValueError("GITHUB_APP_PRIVATE_KEY_PATH is required for github_app")
-    private_key_path = _outside_repository(Path(key_path_raw), root)
+    private_key_path = _trusted_private_key_path(Path(key_path_raw), root)
 
     installation_raw = env.get("GITHUB_APP_INSTALLATION_ID", "")
     installation_id: int | None = None
@@ -206,3 +220,27 @@ def load_github_token_provider(
         repository_full_name=config.repository.full_name,
         installation_id=installation_id,
     )
+
+
+def load_project_token_provider(
+    config: OrchestratorConfig,
+    repository_provider: GitHubTokenProvider,
+    environment: Mapping[str, str] | None = None,
+) -> GitHubTokenProvider:
+    """Use a classic PAT only for user-owned Project V2 operations.
+
+    GitHub App installation tokens remain the repository identity. GitHub currently
+    requires a user credential with the `project` scope to mutate user-owned Projects.
+    Organization-owned Projects continue to use the repository GitHub App provider.
+    """
+    project_url = config.project.url or ""
+    if "/users/" not in project_url:
+        return repository_provider
+    env = os.environ if environment is None else environment
+    value = env.get("GITHUB_PROJECT_TOKEN", "")
+    if not value:
+        raise ValueError(
+            "GITHUB_PROJECT_TOKEN is required for user-owned GitHub Project; "
+            "use a personal access token (classic) with only the project scope"
+        )
+    return StaticGitHubTokenProvider(value, "GITHUB_PROJECT_TOKEN")
