@@ -76,7 +76,7 @@ install_global_command() {
   mkdir -p "$GLOBAL_BIN_DIR"
   chmod 700 "$GLOBAL_BIN_DIR"
 
-  if [[ -e "$GLOBAL_COMMAND" ]] && ! grep -Fq '# AI First Learning App global orchestrator' "$GLOBAL_COMMAND"; then
+  if [[ -e "$GLOBAL_COMMAND" || -L "$GLOBAL_COMMAND" ]] && ! grep -Fq '# AI First Learning App global orchestrator' "$GLOBAL_COMMAND"; then
     fail "global command already exists and is not managed by this project: $GLOBAL_COMMAND"
   fi
 
