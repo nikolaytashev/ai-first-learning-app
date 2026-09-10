@@ -43,11 +43,10 @@ def test_validation_policy_comes_from_trusted_root_not_candidate_worktree(tmp_pa
     python = shlex.quote(sys.executable)
     _write_policy(
         policy_root,
-        f'{python} -c "from pathlib import Path; Path(\'trusted-ran\').write_text(\'yes\')"',
+        f"{python} -c \"from pathlib import Path; Path('trusted-ran').write_text('yes')\"",
     )
     candidate_command = (
-        f'{python} -c "from pathlib import Path; '
-        "Path('candidate-policy-ran').write_text('bad')\""
+        f"{python} -c \"from pathlib import Path; Path('candidate-policy-ran').write_text('bad')\""
     )
     _write_policy(worktree, candidate_command)
 
@@ -66,7 +65,7 @@ def test_validation_commands_do_not_use_a_shell(tmp_path: Path) -> None:
     _write_policy(
         policy_root,
         (
-            f'{python} -c "from pathlib import Path; Path(\'argv-ran\').write_text(\'yes\')" '
+            f"{python} -c \"from pathlib import Path; Path('argv-ran').write_text('yes')\" "
             "&& touch shell-interpolation-ran"
         ),
     )

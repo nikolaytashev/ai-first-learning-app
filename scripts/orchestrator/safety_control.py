@@ -172,13 +172,10 @@ class HardenedControlPlaneWorkflow(ControlPlaneWorkflow):
             for comment in comments
         )
         initial = int(metadata.get("revision", 0)) == 0
-        should_analyze = (
-            metadata.get("paused") is not True
-            and (
-                initial
-                or force_analysis
-                or (self._settings.auto_reconcile_human_comments and normal_feedback)
-            )
+        should_analyze = metadata.get("paused") is not True and (
+            initial
+            or force_analysis
+            or (self._settings.auto_reconcile_human_comments and normal_feedback)
         )
         reconciled = False
         if should_analyze and metadata.get("approval") != "cancelled":
