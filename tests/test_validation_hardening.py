@@ -45,10 +45,11 @@ def test_validation_policy_comes_from_trusted_root_not_candidate_worktree(tmp_pa
         policy_root,
         f'{python} -c "from pathlib import Path; Path(\'trusted-ran\').write_text(\'yes\')"',
     )
-    _write_policy(
-        worktree,
-        f'{python} -c "from pathlib import Path; Path(\'candidate-policy-ran\').write_text(\'bad\')"',
+    candidate_command = (
+        f'{python} -c "from pathlib import Path; '
+        "Path('candidate-policy-ran').write_text('bad')\""
     )
+    _write_policy(worktree, candidate_command)
 
     result = run_validation(worktree, ["docs/example.md"], policy_root=policy_root)
 
@@ -105,4 +106,5 @@ def test_protected_path_contract_covers_runtime_ci_and_credentials() -> None:
     ]
 
     assert protected_path_violations(changed) == sorted(changed)
-    assert protected_path_violations(["mobile/lib/main.dart", "backend/App.cs", "docs/lesson.md"]) == []
+    product_files = ["mobile/lib/main.dart", "backend/App.cs", "docs/lesson.md"]
+    assert protected_path_violations(product_files) == []
