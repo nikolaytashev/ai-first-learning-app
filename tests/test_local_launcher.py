@@ -70,7 +70,7 @@ def test_uninstall_removes_machine_integration_and_separately_confirms_local_dat
     assert 'rm -f "$AUTOSTART_PLIST" "$LAUNCHD_PLIST"' in launcher
     assert "remove_global_command" in launcher
     assert 'rm -f "$GLOBAL_COMMAND"' in launcher
-    assert "Also remove local secrets, logs, state, and Python runtime" in launcher
+    assert "Also remove local secrets, logs, and Python runtime" in launcher
     assert 'rm -rf "$LOCAL_DIR" "$VENV_DIR"' in launcher
     assert "GitHub credentials themselves were not revoked" in launcher
 
