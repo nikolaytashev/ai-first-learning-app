@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/specialist-guidance.schema.json",
+  "title": "Specialist Guidance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workflow_id",
+    "issue_number",
+    "role",
+    "status",
+    "summary",
+    "constraints",
+    "decisions_required",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "workflow_id": {"type": "string", "minLength": 1},
+    "issue_number": {"type": "integer", "minimum": 1},
+    "role": {"enum": ["software_architect", "instructional_designer"]},
+    "status": {"enum": ["ready", "decision_required"]},
+    "summary": {"type": "string", "minLength": 1},
+    "constraints": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "decisions_required": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 3}
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "agent_version", "generated_at"],
+      "properties": {
+        "role": {"enum": ["software_architect", "instructional_designer"]},
+        "agent_version": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "decision_required"}}},
+      "then": {"properties": {"decisions_required": {"minItems": 1}}}
+    }
+  ]
+}
