@@ -45,18 +45,35 @@ in the current login session.
 After initialization, these commands work from any directory. When launchd supervision is enabled:
 
 ```bash
-orch          # manually start the supervised worker
-orch start    # same explicit start operation
-orch status   # show launchd job state
-orch restart  # restart the supervised worker
-orch logs     # follow local stdout/stderr logs
-orch stop     # stop and unload the supervised worker
+orch            # manually start the supervised worker
+orch start      # same explicit start operation
+orch status     # show launchd job state
+orch restart    # restart the supervised worker
+orch logs       # follow local stdout/stderr logs
+orch stop       # stop and unload the supervised worker
+orch uninstall  # remove the machine-level orchestrator integration
 ```
 
 `orch run` always remains available as a foreground/debug mode and is not supervised by launchd.
 When launchd supervision is disabled, `orch` and `orch start` run the foreground worker. All other
 local commands, such as `orch doctor`, `orch project-bootstrap`, `orch usage`, `orch policy`, and
 `orch iteration`, are also global after initialization.
+
+## Uninstall
+
+Run `orch uninstall` from any directory after initialization. It stops and unloads the launchd job
+when present, removes the optional autostart LaunchAgent, removes the managed `~/.local/bin/orch`
+launcher, and removes the PATH block that this project added to the shell profile. It refuses to
+delete an unrelated global `orch` command.
+
+After removing the integration, uninstall asks separately whether the generated local runtime should
+also be deleted. The default is **No**. If accepted, `.local/` and `.venv/` are deleted, including the
+copied GitHub App PEM, stored Project token, launchd files, and local logs. If declined, the local
+secrets/runtime are preserved so `./orch init` can be run again without losing the repository
+checkout.
+
+Uninstall does not delete the repository and does not revoke the GitHub App private key or Project
+PAT remotely. Revoke those separately in GitHub if the credentials themselves must be invalidated.
 
 ## Local files
 
