@@ -29,6 +29,17 @@ jobs:
         run: |
           python scripts/_temp_dependency_snapshot_fix.py
           python scripts/_temp_dependency_snapshot_patch.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_runtime_completion_contracts.py")
+          text = path.read_text(encoding="utf-8")
+          old = '    assert "_validate_current_application_state" in implementation\n'
+          if old not in text:
+              raise SystemExit("stale application-state contract assertion not found")
+          text = text.replace(old, '    assert "_sync_uncommitted_work_with_main" in implementation\n', 1)
+          path.write_text(text, encoding="utf-8")
+          PY
       - name: Format
         run: ruff format scripts tests
       - name: Remove temporary files
