@@ -10,6 +10,16 @@ KEY_FILE="$LOCAL_DIR/github-app.pem"
 VENV_DIR="$ROOT/.venv"
 PYTHON="$VENV_DIR/bin/python"
 REQUIREMENTS_MARKER="$VENV_DIR/.requirements-installed"
+LAUNCHD_LABEL="com.nikolaytashev.ai-first-learning.orchestrator"
+LAUNCHD_DIR="$LOCAL_DIR/launchd"
+LAUNCHD_PLIST="$LAUNCHD_DIR/$LAUNCHD_LABEL.plist"
+LAUNCHD_LOG_DIR="$LOCAL_DIR/logs"
+LAUNCHD_STDOUT="$LAUNCHD_LOG_DIR/orchestrator.stdout.log"
+LAUNCHD_STDERR="$LAUNCHD_LOG_DIR/orchestrator.stderr.log"
+LAUNCHD_DOMAIN="gui/$(id -u)"
+LAUNCHD_TARGET="$LAUNCHD_DOMAIN/$LAUNCHD_LABEL"
+USER_LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+AUTOSTART_PLIST="$USER_LAUNCH_AGENTS/$LAUNCHD_LABEL.plist"
 
 fail() {
   printf 'orchestrator: %s\n' "$*" >&2
@@ -23,14 +33,90 @@ require_python() {
 }
 
 ensure_runtime() {
-  require_python
   if [[ ! -x "$PYTHON" ]]; then
+    require_python
     python3 -m venv "$VENV_DIR"
   fi
   if [[ ! -f "$REQUIREMENTS_MARKER" || "$ROOT/requirements-dev.lock" -nt "$REQUIREMENTS_MARKER" ]]; then
     "$PYTHON" -m pip install -r "$ROOT/requirements-dev.lock"
     touch "$REQUIREMENTS_MARKER"
   fi
+}
+
+ask_yes_no() {
+  local prompt="$1"
+  local answer
+  while true; do
+    printf '%s [y/N] ' "$prompt"
+    IFS= read -r answer
+    case "${answer,,}" in
+      y|yes) return 0 ;;
+      n|no|'') return 1 ;;
+      *) printf 'Please answer y or n.\n' ;;
+    esac
+  done
+}
+
+write_launchd_plist() {
+  mkdir -p "$LAUNCHD_DIR" "$LAUNCHD_LOG_DIR"
+  chmod 700 "$LAUNCHD_DIR" "$LAUNCHD_LOG_DIR"
+  "$PYTHON" - "$LAUNCHD_PLIST" "$ROOT" "$LAUNCHD_STDOUT" "$LAUNCHD_STDERR" \
+    "$LAUNCHD_LABEL" <<'PY'
+from __future__ import annotations
+
+import plistlib
+import sys
+from pathlib import Path
+
+plist_path = Path(sys.argv[1])
+root = Path(sys.argv[2])
+stdout_path = sys.argv[3]
+stderr_path = sys.argv[4]
+label = sys.argv[5]
+
+payload = {
+    "Label": label,
+    "ProgramArguments": [str(root / "orch"), "run"],
+    "WorkingDirectory": str(root),
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "ProcessType": "Background",
+    "ThrottleInterval": 10,
+    "StandardOutPath": stdout_path,
+    "StandardErrorPath": stderr_path,
+}
+with plist_path.open("wb") as handle:
+    plistlib.dump(payload, handle, sort_keys=False)
+PY
+  chmod 600 "$LAUNCHD_PLIST"
+}
+
+configure_launchd() {
+  local enabled=0
+  local autostart=0
+
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v launchctl >/dev/null 2>&1; then
+    if ask_yes_no "Create launchd supervision so a manually started orchestrator restarts after a crash?"; then
+      enabled=1
+      write_launchd_plist
+      if ask_yes_no "Start the orchestrator automatically after login following a computer restart?"; then
+        autostart=1
+        mkdir -p "$USER_LAUNCH_AGENTS"
+        cp "$LAUNCHD_PLIST" "$AUTOSTART_PLIST"
+        chmod 600 "$AUTOSTART_PLIST"
+      else
+        rm -f "$AUTOSTART_PLIST"
+      fi
+    else
+      launchctl bootout "$LAUNCHD_TARGET" >/dev/null 2>&1 || true
+      rm -f "$AUTOSTART_PLIST" "$LAUNCHD_PLIST"
+    fi
+  else
+    printf 'launchd supervision is available only on macOS; continuing without it.\n'
+  fi
+
+  printf 'ORCHESTRATOR_LAUNCHD_ENABLED=%q\n' "$enabled" >> "$ENV_FILE"
+  printf 'ORCHESTRATOR_LAUNCHD_AUTOSTART=%q\n' "$autostart" >> "$ENV_FILE"
 }
 
 initialize_local_secrets() {
@@ -52,11 +138,20 @@ initialize_local_secrets() {
   printf '\n'
   [[ -n "$project_token" ]] || fail "Project token is required"
   printf 'GITHUB_PROJECT_TOKEN=%q\n' "$project_token" > "$ENV_FILE"
+  printf 'ORCHESTRATOR_RUNTIME_PATH=%q\n' "$PATH" >> "$ENV_FILE"
   chmod 600 "$ENV_FILE"
 
   ensure_runtime
+  configure_launchd
+  chmod 600 "$ENV_FILE"
+
   printf 'Local orchestrator runtime initialized. Secrets are stored only in %s\n' "$LOCAL_DIR"
-  printf 'Run ./orch doctor, ./orch project-bootstrap, or ./orch (continuous run).\n'
+  if [[ "${ORCHESTRATOR_LAUNCHD_ENABLED:-0}" == "1" ]]; then
+    printf 'Run ./orch to start the launchd-supervised worker.\n'
+  else
+    printf 'Run ./orch to start the foreground worker.\n'
+  fi
+  printf 'Use ./orch doctor and ./orch project-bootstrap for preflight setup.\n'
 }
 
 if [[ "${1:-}" == "init" ]]; then
@@ -76,10 +171,112 @@ set -a
 source "$ENV_FILE"
 set +a
 export GITHUB_APP_PRIVATE_KEY_PATH="$KEY_FILE"
+if [[ -n "${ORCHESTRATOR_RUNTIME_PATH:-}" ]]; then
+  export PATH="$ORCHESTRATOR_RUNTIME_PATH"
+fi
 
 ensure_runtime
 
+launchd_enabled() {
+  [[ "${ORCHESTRATOR_LAUNCHD_ENABLED:-0}" == "1" ]]
+}
+
+require_launchd() {
+  [[ "$(uname -s)" == "Darwin" ]] || fail "launchd supervision requires macOS"
+  command -v launchctl >/dev/null 2>&1 || fail "launchctl is required"
+  launchd_enabled || fail "launchd supervision is disabled; rerun ./orch init to enable it"
+  [[ -f "$LAUNCHD_PLIST" ]] || fail "missing launchd plist; rerun ./orch init"
+}
+
+start_launchd() {
+  require_launchd
+  if ! launchctl print "$LAUNCHD_TARGET" >/dev/null 2>&1; then
+    launchctl bootstrap "$LAUNCHD_DOMAIN" "$LAUNCHD_PLIST"
+  fi
+  launchctl kickstart -k "$LAUNCHD_TARGET"
+  printf 'Orchestrator started under launchd supervision.\n'
+  printf 'Status: ./orch status\nLogs:   ./orch logs\nStop:   ./orch stop\n'
+}
+
+stop_launchd() {
+  require_launchd
+  if launchctl print "$LAUNCHD_TARGET" >/dev/null 2>&1; then
+    launchctl bootout "$LAUNCHD_TARGET"
+    printf 'Orchestrator stopped.\n'
+  else
+    printf 'Orchestrator is not running.\n'
+  fi
+}
+
+status_launchd() {
+  require_launchd
+  if launchctl print "$LAUNCHD_TARGET"; then
+    return 0
+  fi
+  printf 'Orchestrator is not running under launchd.\n' >&2
+  return 1
+}
+
+restart_launchd() {
+  require_launchd
+  if launchctl print "$LAUNCHD_TARGET" >/dev/null 2>&1; then
+    launchctl kickstart -k "$LAUNCHD_TARGET"
+  else
+    launchctl bootstrap "$LAUNCHD_DOMAIN" "$LAUNCHD_PLIST"
+    launchctl kickstart -k "$LAUNCHD_TARGET"
+  fi
+  printf 'Orchestrator restarted under launchd supervision.\n'
+}
+
+logs_launchd() {
+  require_launchd
+  mkdir -p "$LAUNCHD_LOG_DIR"
+  touch "$LAUNCHD_STDOUT" "$LAUNCHD_STDERR"
+  tail -n 100 -f "$LAUNCHD_STDOUT" "$LAUNCHD_STDERR"
+}
+
 if [[ $# -eq 0 ]]; then
+  if launchd_enabled; then
+    start_launchd
+    exit 0
+  fi
   set -- run
 fi
+
+case "$1" in
+  start)
+    shift
+    [[ $# -eq 0 ]] || fail "start does not accept additional arguments"
+    if launchd_enabled; then
+      start_launchd
+      exit 0
+    fi
+    set -- run
+    ;;
+  stop)
+    shift
+    [[ $# -eq 0 ]] || fail "stop does not accept additional arguments"
+    stop_launchd
+    exit 0
+    ;;
+  status)
+    shift
+    [[ $# -eq 0 ]] || fail "status does not accept additional arguments"
+    status_launchd
+    exit $?
+    ;;
+  restart)
+    shift
+    [[ $# -eq 0 ]] || fail "restart does not accept additional arguments"
+    restart_launchd
+    exit 0
+    ;;
+  logs)
+    shift
+    [[ $# -eq 0 ]] || fail "logs does not accept additional arguments"
+    logs_launchd
+    exit 0
+    ;;
+esac
+
 exec "$PYTHON" -m scripts.run_orchestrator "$@"
