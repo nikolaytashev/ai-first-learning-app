@@ -32,9 +32,11 @@ with orchestrator_process_lock(Path(sys.argv[1])):
     try:
         assert process.stdout is not None
         assert process.stdout.readline().strip() == "locked"
-        with pytest.raises(RuntimeError, match="another orchestrator runtime already holds"):
-            with orchestrator_process_lock(tmp_path):
-                pass
+        with (
+            pytest.raises(RuntimeError, match="another orchestrator runtime already holds"),
+            orchestrator_process_lock(tmp_path),
+        ):
+            pass
     finally:
         process.terminate()
         process.wait(timeout=5)
