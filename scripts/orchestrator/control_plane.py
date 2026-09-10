@@ -217,6 +217,16 @@ class ControlPlaneWorkflow:
             "size": "M",
             "priority_override": None,
             "specialist_roles": [],
+            "ambiguity": "low",
+            "affected_areas": [],
+            "security_sensitive": False,
+            "persistent_data_change": False,
+            "destructive_migration": False,
+            "architecture_change": False,
+            "user_visible_change": False,
+            "concurrency_sensitive": False,
+            "data_loss_risk": False,
+            "previous_failures": 0,
         }
 
     def _process(self, managed: ManagedIssue) -> tuple[bool, int]:
@@ -556,7 +566,11 @@ Tasks that one implementation workflow can safely complete. For every desired ch
 data integrity, destructive migration, concurrency, or significant cross-component boundaries need
 independent technical design/review; include `instructional_designer` when the task creates or
 materially changes learning objectives, lessons, exercises, assessments, pathways, or pedagogical
-content. Use an empty list when no specialist is required. Reuse existing issues when they still
+content. Use an empty list when no specialist is required. Also classify every child using the
+approved model-routing dimensions: ambiguity, affected_areas, security_sensitive,
+persistent_data_change, destructive_migration, architecture_change, user_visible_change,
+concurrency_sensitive, and data_loss_risk. `previous_failures` is orchestrator-owned: preserve the
+current value for reused Tasks and use 0 for new work. Reuse existing issues when they still
 represent desired work. Split oversized work. Preserve completed historical issues. For obsolete
 open work, list it in supersede_existing with an explicit audit reason; never request deletion.
 Human-created child issues may be superseded only with a clear reason. Dependencies must reference
@@ -726,6 +740,21 @@ Canonical repository context:
                 child_meta["risk"] = item["risk"]
                 child_meta["size"] = item["size"]
                 child_meta["specialist_roles"] = item.get("specialist_roles", [])
+                for field in (
+                    "ambiguity",
+                    "affected_areas",
+                    "security_sensitive",
+                    "persistent_data_change",
+                    "destructive_migration",
+                    "architecture_change",
+                    "user_visible_change",
+                    "concurrency_sensitive",
+                    "data_loss_risk",
+                ):
+                    child_meta[field] = item.get(field)
+                child_meta["previous_failures"] = int(
+                    child_meta.get("previous_failures", item.get("previous_failures", 0)) or 0
+                )
                 body = self._child_body(child.body, child_meta, item)
                 child = self._github.update_issue(
                     child.number,
@@ -745,6 +774,19 @@ Canonical repository context:
                 child_meta["risk"] = item["risk"]
                 child_meta["size"] = item["size"]
                 child_meta["specialist_roles"] = item.get("specialist_roles", [])
+                for field in (
+                    "ambiguity",
+                    "affected_areas",
+                    "security_sensitive",
+                    "persistent_data_change",
+                    "destructive_migration",
+                    "architecture_change",
+                    "user_visible_change",
+                    "concurrency_sensitive",
+                    "data_loss_risk",
+                    "previous_failures",
+                ):
+                    child_meta[field] = item.get(field)
                 marker = _metadata_marker(child_meta)
                 body = self._child_body(marker, child_meta, item)
                 ref = self._github.create_issue(cast(str, item["title"]), body)

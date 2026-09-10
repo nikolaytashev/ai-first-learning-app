@@ -97,13 +97,14 @@ class ImplementationWorkflow:
             else:
                 metadata["execution_state"] = "rework"
                 metadata["pr_number"] = None
+                metadata["previous_failures"] = int(metadata.get("previous_failures", 0) or 0) + 1
                 self._update_metadata(task.number, metadata)
                 self._set_project(task, "Ready", "Approved", "Implementer", "Queued")
                 self._audit(
                     task.number,
                     (
                         "Recovered interrupted workflow; unpublished work will be safely "
-                        "regenerated on the existing agent branch."
+                        "regenerated on a fresh workflow-scoped agent branch."
                     ),
                 )
             recovered += 1
@@ -359,6 +360,7 @@ Return exactly one JSON object matching the supplied schema after modifying the 
             sandbox=self._settings.write_sandbox,
             size=str(metadata.get("size") or "M"),
             risk=str(metadata.get("risk") or "medium"),
+            classification=metadata,
         )
 
     def _run_specialists(
@@ -498,6 +500,7 @@ Candidate diff:
             sandbox="read-only",
             size=str(metadata.get("size") or "M"),
             risk=str(metadata.get("risk") or "medium"),
+            classification=metadata,
         )
         if output.get("role") != role or output.get("workflow_id") != workflow_id:
             raise RuntimeError(f"{role_name} output failed deterministic identity checks")
@@ -514,9 +517,11 @@ Candidate diff:
         sandbox: str,
         size: str,
         risk: str,
+        classification: Mapping[str, Any] | None = None,
     ) -> JsonObject:
         last_error: RuntimeError | None = None
         for attempt in range(1, self._config.runtime.max_role_attempts + 1):
+            routing = classification or {}
             model = select_model(
                 self._config,
                 role,
@@ -524,6 +529,13 @@ Candidate diff:
                 attempt,
                 size=size,
                 risk=risk,
+                ambiguity=str(routing.get("ambiguity") or "low"),
+                architecture_change=routing.get("architecture_change") is True,
+                security_sensitive=routing.get("security_sensitive") is True,
+                destructive_migration=routing.get("destructive_migration") is True,
+                data_loss_risk=routing.get("data_loss_risk") is True,
+                concurrency_sensitive=routing.get("concurrency_sensitive") is True,
+                previous_failures=int(routing.get("previous_failures", 0) or 0),
             )
             runner = BudgetedAgentRunner(
                 CodexCliRunner(
@@ -664,6 +676,7 @@ Deterministic integration validation:
                 sandbox="read-only",
                 size=str(metadata.get("size") or "M"),
                 risk="medium",
+                classification=metadata,
             )
             if review.get("verdict") == "passed":
                 metadata["execution_state"] = "done"
@@ -885,6 +898,7 @@ Deterministic integration validation:
         reason: str,
     ) -> JsonObject:
         metadata["execution_state"] = "blocked"
+        metadata["previous_failures"] = int(metadata.get("previous_failures", 0) or 0) + 1
         self._update_metadata(task.number, metadata)
         self._set_project(task, "Blocked", "Approved", "Human", "Failed")
         self._audit(task.number, f"Corrective implementation budget exhausted:\n{reason}")

@@ -17,7 +17,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["key", "type", "existing_issue_number", "title", "description", "acceptance_criteria", "priority", "size", "risk", "specialist_roles", "dependencies"],
+        "required": ["key", "type", "existing_issue_number", "title", "description", "acceptance_criteria", "priority", "size", "risk", "ambiguity", "affected_areas", "security_sensitive", "persistent_data_change", "destructive_migration", "architecture_change", "user_visible_change", "concurrency_sensitive", "data_loss_risk", "previous_failures", "specialist_roles", "dependencies"],
         "properties": {
           "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"},
           "type": {"enum": ["Feature", "Task"]},
@@ -31,6 +31,20 @@
           "priority": {"enum": ["P0", "P1", "P2", "P3"]},
           "size": {"enum": ["XS", "S", "M", "L"]},
           "risk": {"enum": ["low", "medium", "high", "critical"]},
+          "ambiguity": {"enum": ["low", "medium", "high"]},
+          "affected_areas": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "security_sensitive": {"type": "boolean"},
+          "persistent_data_change": {"type": "boolean"},
+          "destructive_migration": {"type": "boolean"},
+          "architecture_change": {"type": "boolean"},
+          "user_visible_change": {"type": "boolean"},
+          "concurrency_sensitive": {"type": "boolean"},
+          "data_loss_risk": {"type": "boolean"},
+          "previous_failures": {"type": "integer", "minimum": 0},
           "specialist_roles": {
             "type": "array",
             "uniqueItems": true,
