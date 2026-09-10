@@ -28,18 +28,23 @@ jobs:
           python-version: '3.12'
 
       - name: Apply production patch
-        run: python scripts/_apply_autonomy_completion.py
+        run: |
+          python scripts/_apply_autonomy_completion.py
+          python scripts/_fix_autonomy_completion.py
 
       - name: Remove temporary helpers
         run: |
           rm scripts/_apply_autonomy_completion.py
+          rm scripts/_fix_autonomy_completion.py
           rm .github/workflows/apply-autonomy-completion.yml
 
       - name: Install validation dependencies
         run: python -m pip install -r requirements-dev.lock
 
       - name: Format Python
-        run: ruff format scripts tests
+        run: |
+          ruff format scripts tests
+          ruff check --fix .
 
       - name: Validate production patch
         run: |
