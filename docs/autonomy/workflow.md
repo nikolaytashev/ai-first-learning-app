@@ -16,12 +16,21 @@ Epic (optional)
     └── Task
 ```
 
-A human-created Epic/Feature issue is canonical and is not duplicated by an agent. When no managed backlog exists, the continuous runtime may generate one bounded Agent-origin Feature proposal from the approved mission/product context; it always stops at Product Approval `Pending` and requires human approval before implementation. Native GitHub
-sub-issues represent hierarchy. Native blocked-by issue dependencies represent true prerequisite
-ordering. A Task may legitimately have no dependencies; BA adds edges only when another child must
-complete first. BA owns the DAG. Specialists, Implementer, QA and Reviewer may emit a structured
-`replan_required` finding for a concrete missing dependency/decomposition defect, which is routed
-back through BA rather than mutating the graph directly.
+A human-created Epic/Feature issue is canonical and is not duplicated by an agent. When no managed
+backlog exists, the continuous runtime may generate one bounded Agent-origin Feature proposal from
+the approved mission/product context; it always stops at Product Approval `Pending` and requires
+human approval before implementation. Native GitHub sub-issues represent hierarchy. Native
+blocked-by issue dependencies represent true prerequisite ordering. A Task may legitimately have no
+dependencies; BA adds edges only when another child must complete first. BA owns the DAG.
+Specialists, Implementer, QA and Reviewer may emit a structured `replan_required` finding for a
+concrete missing dependency/decomposition defect, which is routed back through BA rather than
+mutating the graph directly.
+
+Task execution is intentionally single-task today even when multiple Tasks are dependency-free. The
+DAG therefore describes correctness/order, not artificial serialization. Future bounded parallelism
+may run independent Tasks concurrently, but absence of a dependency by itself never asserts that two
+Tasks are conflict-free enough for parallel execution.
+
 Project field `Origin` distinguishes `Human` from `Agent` work, while hidden issue metadata stores
 recoverable orchestration identity, parent/key, revision, approval digest and execution state.
 
@@ -80,21 +89,23 @@ For one executable Task:
 2. Verify native blocked-by dependencies are complete.
 3. Keep the orchestrator root checkout pinned. Fetch current `origin/main` and create an isolated
    `agent/*` branch/worktree from that latest application state. Record the starting `base_sha`.
-4. Recover interrupted `running`/`review` Tasks idempotently from an existing owned PR or return unpublished work to rework.
-5. Run required Software Architect and/or Instructional Designer specialist gates when BA classification requests them; unresolved human decisions block.
+4. Recover interrupted `running`/`review` Tasks idempotently from an existing owned PR or return
+   unpublished work to rework.
+5. Run required Software Architect and/or Instructional Designer specialist gates when BA
+   classification requests them; unresolved human decisions block.
 6. Run the Implementer in `workspace-write` sandbox with only Task/Feature scope.
-5. Run deterministic validation selected from `config/validation.yaml`.
-6. Run independent QA against acceptance criteria and regression evidence.
-7. Run independent code/architecture/security review.
-8. Return bounded findings to the Implementer and repeat within corrective-cycle budget.
-9. Before final validation/review, refresh the uncommitted candidate onto latest `origin/main`; if
-   main advances again after review, repeat synchronization + validation + QA + review. Record
-   `validated_against_sha`. Re-read Task/Feature approval before publication.
-10. Commit locally under orchestrator identity and push only the non-default branch.
-11. Create/reconcile one draft pull request containing stable task/workflow markers.
-12. Set the Task to `In Review` / `Awaiting Human` and stop.
-13. Human owner reviews and merges (or closes) the PR.
-14. A later iteration observes merged PR, closes Task as `completed`, and updates Project state.
+7. Run deterministic validation selected from `config/validation.yaml`.
+8. Run independent QA against acceptance criteria and regression evidence.
+9. Run independent code/architecture/security review.
+10. Return bounded findings to the Implementer and repeat within corrective-cycle budget.
+11. Before final validation/review, refresh the uncommitted candidate onto latest `origin/main`; if
+    main advances again after review, repeat synchronization + validation + QA + review. Record
+    `validated_against_sha`. Re-read Task/Feature approval before publication.
+12. Commit locally under orchestrator identity and push only the non-default branch.
+13. Create/reconcile one draft pull request containing stable task/workflow markers.
+14. Set the Task to `In Review` / `Awaiting Human` and stop.
+15. Human owner reviews and merges (or closes) the PR.
+16. A later iteration observes merged PR, closes Task as `completed`, and updates Project state.
 
 Only human merge completes a Task. Closing a PR without merge returns the Task to rework.
 
@@ -102,8 +113,9 @@ Only human merge completes a Task. Closing a PR without merge returns the Task t
 
 A Feature is not complete merely because all child PRs exist. After every child Task is closed as
 completed, an independent Feature-level QA pass checks that the completed child specifications
-collectively satisfy the high-level Feature acceptance criteria. Passing closes the Feature as
-completed. A failure blocks the Feature for replan/decision instead of silently declaring success.
+collectively satisfy the high-level Feature acceptance criteria against a fresh detached snapshot of
+current `origin/main`. Passing closes the Feature as completed. A failure blocks the Feature for
+replan/decision instead of silently declaring success.
 
 ## Runtime loop
 
@@ -138,6 +150,8 @@ another role.
 The local root checkout is the trusted, manually updated orchestrator runtime. It is never
 automatically fast-forwarded by `orch`. Application truth is `origin/main`. PM/BA/backlog planning
 runs from a detached latest-`origin/main` application snapshot while schemas/config remain trusted
-from the pinned root. Task specialists, Implementer, QA and Reviewer share the Task worktree.
-Feature QA runs from its own detached latest-`origin/main` snapshot. This keeps all product agents on
-current merged application code without hot-swapping the running orchestrator implementation.
+from the pinned root. Task specialists, Implementer, QA and Reviewer share the Task worktree. Before
+a Task is published, its uncommitted candidate is synchronized with current `origin/main` and the
+validation/QA/review gates are repeated when main advanced. Feature QA runs from its own detached
+latest-`origin/main` snapshot. This keeps all product agents on current merged application code
+without hot-swapping the running orchestrator implementation.
