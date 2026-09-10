@@ -17,7 +17,7 @@ from scripts.orchestrator.control_plane import (
     parse_metadata,
 )
 from scripts.orchestrator.github import GitHubClient
-from scripts.orchestrator.model import CodexRun, IssueSnapshot, JsonObject, ModelSelection, OrchestratorConfig
+from scripts.orchestrator.model import CodexRun, JsonObject, ModelSelection, OrchestratorConfig
 from scripts.orchestrator.runtime_config import ControlPlaneSettings
 
 _SAFETY_COMMANDS = {"pause", "resume", "cancel", "priority", "rework"}
@@ -173,9 +173,12 @@ class HardenedControlPlaneWorkflow(ControlPlaneWorkflow):
         )
         initial = int(metadata.get("revision", 0)) == 0
         should_analyze = (
-            initial
-            or force_analysis
-            or (self._settings.auto_reconcile_human_comments and normal_feedback)
+            metadata.get("paused") is not True
+            and (
+                initial
+                or force_analysis
+                or (self._settings.auto_reconcile_human_comments and normal_feedback)
+            )
         )
         reconciled = False
         if should_analyze and metadata.get("approval") != "cancelled":
