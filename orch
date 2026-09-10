@@ -10,6 +10,18 @@ KEY_FILE="$LOCAL_DIR/github-app.pem"
 VENV_DIR="$ROOT/.venv"
 PYTHON="$VENV_DIR/bin/python"
 REQUIREMENTS_MARKER="$VENV_DIR/.requirements-installed"
+LAUNCHD_LABEL="com.nikolaytashev.ai-first-learning.orchestrator"
+LAUNCHD_DIR="$LOCAL_DIR/launchd"
+LAUNCHD_PLIST="$LAUNCHD_DIR/$LAUNCHD_LABEL.plist"
+LAUNCHD_LOG_DIR="$LOCAL_DIR/logs"
+LAUNCHD_STDOUT="$LAUNCHD_LOG_DIR/orchestrator.stdout.log"
+LAUNCHD_STDERR="$LAUNCHD_LOG_DIR/orchestrator.stderr.log"
+LAUNCHD_DOMAIN="gui/$(id -u)"
+LAUNCHD_TARGET="$LAUNCHD_DOMAIN/$LAUNCHD_LABEL"
+USER_LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+AUTOSTART_PLIST="$USER_LAUNCH_AGENTS/$LAUNCHD_LABEL.plist"
+GLOBAL_BIN_DIR="$HOME/.local/bin"
+GLOBAL_COMMAND="$GLOBAL_BIN_DIR/orch"
 
 fail() {
   printf 'orchestrator: %s\n' "$*" >&2
@@ -23,14 +35,179 @@ require_python() {
 }
 
 ensure_runtime() {
-  require_python
   if [[ ! -x "$PYTHON" ]]; then
+    require_python
     python3 -m venv "$VENV_DIR"
   fi
   if [[ ! -f "$REQUIREMENTS_MARKER" || "$ROOT/requirements-dev.lock" -nt "$REQUIREMENTS_MARKER" ]]; then
     "$PYTHON" -m pip install -r "$ROOT/requirements-dev.lock"
     touch "$REQUIREMENTS_MARKER"
   fi
+}
+
+ask_yes_no() {
+  local prompt="$1"
+  local answer
+  local normalized
+  while true; do
+    printf '%s [y/N] ' "$prompt"
+    IFS= read -r answer
+    normalized="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
+    case "$normalized" in
+      y|yes) return 0 ;;
+      n|no|'') return 1 ;;
+      *) printf 'Please answer y or n.\n' ;;
+    esac
+  done
+}
+
+shell_profile() {
+  case "${SHELL##*/}" in
+    zsh) printf '%s\n' "$HOME/.zshrc" ;;
+    bash) printf '%s\n' "$HOME/.bashrc" ;;
+    *) printf '%s\n' "$HOME/.profile" ;;
+  esac
+}
+
+install_global_command() {
+  local profile
+  local path_line='export PATH="$HOME/.local/bin:$PATH"'
+
+  mkdir -p "$GLOBAL_BIN_DIR"
+  chmod 700 "$GLOBAL_BIN_DIR"
+
+  if [[ -e "$GLOBAL_COMMAND" || -L "$GLOBAL_COMMAND" ]] && ! grep -Fq '# AI First Learning App global orchestrator' "$GLOBAL_COMMAND"; then
+    fail "global command already exists and is not managed by this project: $GLOBAL_COMMAND"
+  fi
+
+  "$PYTHON" - "$GLOBAL_COMMAND" "$ROOT/orch" <<'PY'
+from __future__ import annotations
+
+import shlex
+import sys
+from pathlib import Path
+
+command = Path(sys.argv[1])
+repository_launcher = sys.argv[2]
+command.write_text(
+    "#!/bin/sh\n"
+    "# AI First Learning App global orchestrator\n"
+    f"exec {shlex.quote(repository_launcher)} \"$@\"\n",
+    encoding="utf-8",
+)
+PY
+  chmod 700 "$GLOBAL_COMMAND"
+
+  profile="$(shell_profile)"
+  touch "$profile"
+  if ! grep -Fq '$HOME/.local/bin' "$profile"; then
+    printf '\n# AI First Learning App global orchestrator command\n%s\n' "$path_line" >> "$profile"
+  fi
+  ORCHESTRATOR_GLOBAL_PROFILE="$profile"
+}
+
+remove_global_command() {
+  local profile
+
+  if [[ -e "$GLOBAL_COMMAND" || -L "$GLOBAL_COMMAND" ]]; then
+    if grep -Fq '# AI First Learning App global orchestrator' "$GLOBAL_COMMAND"; then
+      rm -f "$GLOBAL_COMMAND"
+    else
+      fail "refusing to remove global command not managed by this project: $GLOBAL_COMMAND"
+    fi
+  fi
+
+  profile="$(shell_profile)"
+  if [[ -f "$profile" ]]; then
+    "$PYTHON" - "$profile" <<'PY'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+profile = Path(sys.argv[1])
+marker = "# AI First Learning App global orchestrator command"
+path_line = 'export PATH="$HOME/.local/bin:$PATH"'
+lines = profile.read_text(encoding="utf-8").splitlines()
+cleaned: list[str] = []
+i = 0
+while i < len(lines):
+    if lines[i] == marker and i + 1 < len(lines) and lines[i + 1] == path_line:
+        if cleaned and cleaned[-1] == "":
+            cleaned.pop()
+        i += 2
+        continue
+    cleaned.append(lines[i])
+    i += 1
+profile.write_text("\n".join(cleaned) + ("\n" if cleaned else ""), encoding="utf-8")
+PY
+  fi
+
+  rmdir "$GLOBAL_BIN_DIR" >/dev/null 2>&1 || true
+}
+
+write_launchd_plist() {
+  mkdir -p "$LAUNCHD_DIR" "$LAUNCHD_LOG_DIR"
+  chmod 700 "$LAUNCHD_DIR" "$LAUNCHD_LOG_DIR"
+  "$PYTHON" - "$LAUNCHD_PLIST" "$ROOT" "$LAUNCHD_STDOUT" "$LAUNCHD_STDERR" \
+    "$LAUNCHD_LABEL" <<'PY'
+from __future__ import annotations
+
+import plistlib
+import sys
+from pathlib import Path
+
+plist_path = Path(sys.argv[1])
+root = Path(sys.argv[2])
+stdout_path = sys.argv[3]
+stderr_path = sys.argv[4]
+label = sys.argv[5]
+
+payload = {
+    "Label": label,
+    "ProgramArguments": [str(root / "orch"), "run"],
+    "WorkingDirectory": str(root),
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "ProcessType": "Background",
+    "ThrottleInterval": 10,
+    "StandardOutPath": stdout_path,
+    "StandardErrorPath": stderr_path,
+}
+with plist_path.open("wb") as handle:
+    plistlib.dump(payload, handle, sort_keys=False)
+PY
+  chmod 600 "$LAUNCHD_PLIST"
+}
+
+configure_launchd() {
+  local enabled=0
+  local autostart=0
+
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v launchctl >/dev/null 2>&1; then
+    if ask_yes_no "Create launchd supervision so a manually started orchestrator restarts after a crash?"; then
+      enabled=1
+      write_launchd_plist
+      if ask_yes_no "Start the orchestrator automatically after login following a computer restart?"; then
+        autostart=1
+        mkdir -p "$USER_LAUNCH_AGENTS"
+        cp "$LAUNCHD_PLIST" "$AUTOSTART_PLIST"
+        chmod 600 "$AUTOSTART_PLIST"
+      else
+        rm -f "$AUTOSTART_PLIST"
+      fi
+    else
+      launchctl bootout "$LAUNCHD_TARGET" >/dev/null 2>&1 || true
+      rm -f "$AUTOSTART_PLIST" "$LAUNCHD_PLIST"
+    fi
+  else
+    printf 'launchd supervision is available only on macOS; continuing without it.\n'
+  fi
+
+  ORCHESTRATOR_LAUNCHD_ENABLED="$enabled"
+  ORCHESTRATOR_LAUNCHD_AUTOSTART="$autostart"
+  printf 'ORCHESTRATOR_LAUNCHD_ENABLED=%q\n' "$enabled" >> "$ENV_FILE"
+  printf 'ORCHESTRATOR_LAUNCHD_AUTOSTART=%q\n' "$autostart" >> "$ENV_FILE"
 }
 
 initialize_local_secrets() {
@@ -52,11 +229,26 @@ initialize_local_secrets() {
   printf '\n'
   [[ -n "$project_token" ]] || fail "Project token is required"
   printf 'GITHUB_PROJECT_TOKEN=%q\n' "$project_token" > "$ENV_FILE"
+  printf 'ORCHESTRATOR_RUNTIME_PATH=%q\n' "$PATH" >> "$ENV_FILE"
   chmod 600 "$ENV_FILE"
 
   ensure_runtime
+  install_global_command
+  configure_launchd
+  chmod 600 "$ENV_FILE"
+
   printf 'Local orchestrator runtime initialized. Secrets are stored only in %s\n' "$LOCAL_DIR"
-  printf 'Run ./orch doctor, ./orch project-bootstrap, or ./orch (continuous run).\n'
+  printf 'Global command installed at %s\n' "$GLOBAL_COMMAND"
+  case ":$PATH:" in
+    *":$GLOBAL_BIN_DIR:"*) ;;
+    *) printf 'Open a new terminal to use `orch`, or run once: source %s\n' "$ORCHESTRATOR_GLOBAL_PROFILE" ;;
+  esac
+  if [[ "${ORCHESTRATOR_LAUNCHD_ENABLED:-0}" == "1" ]]; then
+    printf 'Run orch to start the launchd-supervised worker.\n'
+  else
+    printf 'Run orch to start the foreground worker.\n'
+  fi
+  printf 'Use orch doctor and orch project-bootstrap for preflight setup.\n'
 }
 
 if [[ "${1:-}" == "init" ]]; then
@@ -76,10 +268,135 @@ set -a
 source "$ENV_FILE"
 set +a
 export GITHUB_APP_PRIVATE_KEY_PATH="$KEY_FILE"
+if [[ -n "${ORCHESTRATOR_RUNTIME_PATH:-}" ]]; then
+  export PATH="$ORCHESTRATOR_RUNTIME_PATH"
+fi
 
 ensure_runtime
 
+launchd_enabled() {
+  [[ "${ORCHESTRATOR_LAUNCHD_ENABLED:-0}" == "1" ]]
+}
+
+require_launchd() {
+  [[ "$(uname -s)" == "Darwin" ]] || fail "launchd supervision requires macOS"
+  command -v launchctl >/dev/null 2>&1 || fail "launchctl is required"
+  launchd_enabled || fail "launchd supervision is disabled; rerun ./orch init to enable it"
+  [[ -f "$LAUNCHD_PLIST" ]] || fail "missing launchd plist; rerun ./orch init"
+}
+
+start_launchd() {
+  require_launchd
+  if ! launchctl print "$LAUNCHD_TARGET" >/dev/null 2>&1; then
+    launchctl bootstrap "$LAUNCHD_DOMAIN" "$LAUNCHD_PLIST"
+  fi
+  launchctl kickstart -k "$LAUNCHD_TARGET"
+  printf 'Orchestrator started under launchd supervision.\n'
+  printf 'Status: orch status\nLogs:   orch logs\nStop:   orch stop\n'
+}
+
+stop_launchd() {
+  require_launchd
+  if launchctl print "$LAUNCHD_TARGET" >/dev/null 2>&1; then
+    launchctl bootout "$LAUNCHD_TARGET"
+    printf 'Orchestrator stopped.\n'
+  else
+    printf 'Orchestrator is not running.\n'
+  fi
+}
+
+status_launchd() {
+  require_launchd
+  if launchctl print "$LAUNCHD_TARGET"; then
+    return 0
+  fi
+  printf 'Orchestrator is not running under launchd.\n' >&2
+  return 1
+}
+
+restart_launchd() {
+  require_launchd
+  if launchctl print "$LAUNCHD_TARGET" >/dev/null 2>&1; then
+    launchctl kickstart -k "$LAUNCHD_TARGET"
+  else
+    launchctl bootstrap "$LAUNCHD_DOMAIN" "$LAUNCHD_PLIST"
+    launchctl kickstart -k "$LAUNCHD_TARGET"
+  fi
+  printf 'Orchestrator restarted under launchd supervision.\n'
+}
+
+logs_launchd() {
+  require_launchd
+  mkdir -p "$LAUNCHD_LOG_DIR"
+  touch "$LAUNCHD_STDOUT" "$LAUNCHD_STDERR"
+  tail -n 100 -f "$LAUNCHD_STDOUT" "$LAUNCHD_STDERR"
+}
+
+uninstall_orchestrator() {
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v launchctl >/dev/null 2>&1; then
+    launchctl bootout "$LAUNCHD_TARGET" >/dev/null 2>&1 || true
+  fi
+  rm -f "$AUTOSTART_PLIST" "$LAUNCHD_PLIST"
+  remove_global_command
+
+  if ask_yes_no "Also remove local secrets, logs, and Python runtime (.local/ and .venv)?"; then
+    rm -rf "$LOCAL_DIR" "$VENV_DIR"
+    printf 'Orchestrator uninstalled and local runtime data removed.\n'
+  else
+    rm -rf "$LAUNCHD_DIR"
+    printf 'Orchestrator integration uninstalled. Local secrets/runtime were preserved.\n'
+  fi
+  printf 'The repository checkout and GitHub credentials themselves were not revoked or deleted remotely.\n'
+}
+
 if [[ $# -eq 0 ]]; then
+  if launchd_enabled; then
+    start_launchd
+    exit 0
+  fi
   set -- run
 fi
+
+case "$1" in
+  start)
+    shift
+    [[ $# -eq 0 ]] || fail "start does not accept additional arguments"
+    if launchd_enabled; then
+      start_launchd
+      exit 0
+    fi
+    set -- run
+    ;;
+  stop)
+    shift
+    [[ $# -eq 0 ]] || fail "stop does not accept additional arguments"
+    stop_launchd
+    exit 0
+    ;;
+  status)
+    shift
+    [[ $# -eq 0 ]] || fail "status does not accept additional arguments"
+    status_launchd
+    exit $?
+    ;;
+  restart)
+    shift
+    [[ $# -eq 0 ]] || fail "restart does not accept additional arguments"
+    restart_launchd
+    exit 0
+    ;;
+  logs)
+    shift
+    [[ $# -eq 0 ]] || fail "logs does not accept additional arguments"
+    logs_launchd
+    exit 0
+    ;;
+  uninstall)
+    shift
+    [[ $# -eq 0 ]] || fail "uninstall does not accept additional arguments"
+    uninstall_orchestrator
+    exit 0
+    ;;
+esac
+
 exec "$PYTHON" -m scripts.run_orchestrator "$@"
