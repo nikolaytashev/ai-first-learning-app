@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import shlex
 import subprocess
 import time
 from collections.abc import Mapping
@@ -13,6 +14,27 @@ from typing import Any, cast
 import yaml
 
 from scripts.orchestrator.model import JsonObject
+
+TRUSTED_POLICY_ROOT = Path(__file__).resolve().parents[2]
+
+_PROTECTED_AUTONOMY_PATHS = (
+    "orch",
+    "AGENTS.md",
+    "mission.yaml",
+    ".gitignore",
+    ".env.example",
+    ".secrets.baseline",
+    "config/**",
+    ".github/workflows/**",
+    "schemas/**",
+    "scripts/run_orchestrator.py",
+    "scripts/validate_repository.py",
+    "scripts/orchestrator/**",
+    "requirements*.in",
+    "requirements*.txt",
+    "requirements*.lock",
+    "pyproject.toml",
+)
 
 
 @dataclass(frozen=True)
@@ -57,9 +79,19 @@ def _mapping(value: Any, label: str) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], value)
 
 
-def selected_commands(root: Path, changed_files: list[str]) -> list[tuple[str, str]]:
-    """Return de-duplicated validation commands selected by config/validation.yaml."""
-    raw = yaml.safe_load((root / "config/validation.yaml").read_text(encoding="utf-8"))
+def protected_path_violations(changed_files: list[str]) -> list[str]:
+    """Return autonomous changes that cross the trusted runtime/guardrail boundary."""
+    violations: list[str] = []
+    for path in changed_files:
+        normalized = path.lstrip("/")
+        if any(fnmatch.fnmatch(normalized, pattern) for pattern in _PROTECTED_AUTONOMY_PATHS):
+            violations.append(normalized)
+    return sorted(set(violations))
+
+
+def selected_commands(policy_root: Path, changed_files: list[str]) -> list[tuple[str, str]]:
+    """Return validation commands selected only from a trusted policy checkout."""
+    raw = yaml.safe_load((policy_root / "config/validation.yaml").read_text(encoding="utf-8"))
     document = _mapping(raw, "config/validation.yaml")
     profiles = _mapping(document.get("profiles"), "profiles")
     selection = _mapping(document.get("selection"), "selection")
@@ -98,16 +130,47 @@ def selected_commands(root: Path, changed_files: list[str]) -> list[tuple[str, s
     return result
 
 
-def run_validation(root: Path, changed_files: list[str]) -> ValidationRun:
-    """Execute every selected command without shell interpolation beyond the checked-in command."""
+def run_validation(
+    execution_root: Path,
+    changed_files: list[str],
+    *,
+    policy_root: Path | None = None,
+) -> ValidationRun:
+    """Execute trusted validation policy in the untrusted candidate worktree."""
+    violations = protected_path_violations(changed_files)
+    if violations:
+        return ValidationRun(
+            "failed",
+            (
+                ValidationCheck(
+                    profile="guardrails",
+                    command="protected-path-policy",
+                    status="failed",
+                    exit_code=1,
+                    elapsed_ms=0,
+                    output=(
+                        "Autonomous implementation may not modify trusted guardrail paths: "
+                        + ", ".join(violations)
+                    ),
+                ),
+            ),
+        )
+
+    trusted_root = TRUSTED_POLICY_ROOT if policy_root is None else policy_root
     checks: list[ValidationCheck] = []
-    for profile, command in selected_commands(root, changed_files):
+    for profile, command in selected_commands(trusted_root, changed_files):
         started = time.monotonic()
+        try:
+            argv = shlex.split(command)
+        except ValueError as exc:
+            raise ValueError(f"invalid trusted validation command {command!r}: {exc}") from exc
+        if not argv:
+            raise ValueError(f"trusted validation profile {profile!r} contains an empty command")
         completed = subprocess.run(
-            command,
-            cwd=root,
+            argv,
+            cwd=execution_root,
             text=True,
-            shell=True,
+            shell=False,
             capture_output=True,
             check=False,
         )

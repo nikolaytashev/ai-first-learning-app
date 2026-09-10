@@ -7,13 +7,13 @@ import hashlib
 import json
 import sys
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 from scripts.orchestrator.codex import CodexCliRunner
 from scripts.orchestrator.config import load_config
-from scripts.orchestrator.control_plane import ControlPlaneWorkflow
 from scripts.orchestrator.github import GitHubClient
 from scripts.orchestrator.github_auth import (
     load_github_token_provider,
@@ -22,6 +22,7 @@ from scripts.orchestrator.github_auth import (
 from scripts.orchestrator.implementation import ImplementationWorkflow
 from scripts.orchestrator.model import OrchestratorConfig
 from scripts.orchestrator.notifications import Notifier
+from scripts.orchestrator.process_lock import orchestrator_process_lock
 from scripts.orchestrator.proposal import ProposalWorkflow, preflight_errors
 from scripts.orchestrator.repository_health import RepositoryHealthChecker
 from scripts.orchestrator.runtime_config import (
@@ -40,6 +41,10 @@ from scripts.orchestrator.runtime_policy import (
     schedule_interval_minutes,
 )
 from scripts.orchestrator.runtime_state import RuntimeStateStore
+from scripts.orchestrator.safety_control import (
+    HardenedControlPlaneWorkflow,
+    run_safety_control,
+)
 from scripts.orchestrator.state import StateStore, WorkflowState
 from scripts.orchestrator.usage_guard import load_usage_guard_settings
 from scripts.orchestrator.usage_policy import (
@@ -231,24 +236,52 @@ def resume() -> int:
     return 0
 
 
+def _record_failed_iteration(
+    state: RuntimeStateStore,
+    settings: RuntimePolicySettings,
+    *,
+    reason: str,
+    budget: IterationBudget | None,
+    started_at: datetime,
+) -> None:
+    local_date = local_now(settings, started_at).date().isoformat()
+    failure_id = state.start_iteration(local_date, started_at)
+    state.finish_iteration(
+        failure_id,
+        status="failed",
+        reason=reason,
+        budget={} if budget is None else budget.as_dict(),
+    )
+
+
 def _iteration() -> tuple[int, dict[str, object]]:
     """Run one GitHub-control and, when cadence permits, one bounded implementation pass."""
     runtime_state: RuntimeStateStore | None = None
     notifier: Notifier | None = None
+    settings: RuntimePolicySettings | None = None
     budget: IterationBudget | None = None
-    iteration_id: int | None = None
     now_utc = datetime.now(UTC)
     try:
+        bootstrap_config = load_config(ROOT)
+        settings = load_runtime_policy_settings(ROOT)
+        runtime_state = RuntimeStateStore(bootstrap_config.runtime.state_directory)
+        notifier = Notifier(settings.notifications)
+
         config, settings, github = _trusted_github()
         control_settings = load_control_plane_settings(ROOT)
         implementation_settings = load_implementation_settings(ROOT)
-        runtime_state = RuntimeStateStore(config.runtime.state_directory)
-        notifier = Notifier(settings.notifications)
         _emit_daily_report_if_due(
             runtime_state,
             notifier,
             settings=settings,
             now_utc=now_utc,
+        )
+
+        safety_control = run_safety_control(
+            root=ROOT,
+            config=config,
+            settings=control_settings,
+            github=github,
         )
 
         failure_stop = evaluate_stop_conditions(
@@ -269,6 +302,7 @@ def _iteration() -> tuple[int, dict[str, object]]:
                 "status": "stopped",
                 "reason": failure_stop.reason,
                 "detail": failure_stop.detail,
+                "safety_control": safety_control.as_dict(),
             }
 
         usage_decision = check_configurable_usage_budget(
@@ -294,6 +328,7 @@ def _iteration() -> tuple[int, dict[str, object]]:
             return 0, {
                 "status": "skipped_usage_guard",
                 "usage_guard": usage_decision.as_dict(),
+                "safety_control": safety_control.as_dict(),
             }
 
         budget = IterationBudget(settings.budget)
@@ -306,7 +341,7 @@ def _iteration() -> tuple[int, dict[str, object]]:
             ),
             budget,
         )
-        control = ControlPlaneWorkflow(
+        control = HardenedControlPlaneWorkflow(
             root=ROOT,
             config=config,
             settings=control_settings,
@@ -364,7 +399,8 @@ def _iteration() -> tuple[int, dict[str, object]]:
         pr_outcomes_reconciled = implementation_result.get("pr_outcomes_reconciled", 0)
         feature_checks = implementation_result.get("feature_checks", 0)
         worked = (
-            control_result.reconciled > 0
+            safety_control.commands > 0
+            or control_result.reconciled > 0
             or control_result.commands > 0
             or implementation_result.get("status") not in {"idle", "skipped_schedule"}
             or (isinstance(pr_outcomes_reconciled, int) and pr_outcomes_reconciled > 0)
@@ -379,10 +415,10 @@ def _iteration() -> tuple[int, dict[str, object]]:
                 reason=str(implementation_result.get("status") or "control_plane"),
                 budget=budget.as_dict(),
             )
-            iteration_id = None
 
         result: dict[str, object] = {
             "status": "completed" if worked else "idle",
+            "safety_control": safety_control.as_dict(),
             "control_plane": control_result.as_dict(),
             "implementation": implementation_result,
             "iteration_budget": budget.as_dict(),
@@ -390,13 +426,15 @@ def _iteration() -> tuple[int, dict[str, object]]:
         }
         return 0, result
     except (RuntimeError, ValueError) as exc:
-        if runtime_state is not None and iteration_id is not None:
-            runtime_state.finish_iteration(
-                iteration_id,
-                status="failed",
-                reason=str(exc),
-                budget={} if budget is None else budget.as_dict(),
-            )
+        if runtime_state is not None and settings is not None:
+            with suppress(RuntimeError, ValueError):
+                _record_failed_iteration(
+                    runtime_state,
+                    settings,
+                    reason=str(exc),
+                    budget=budget,
+                    started_at=now_utc,
+                )
         if runtime_state is not None and notifier is not None:
             digest = hashlib.sha256(str(exc).encode("utf-8")).hexdigest()[:16]
             _notify_once(
@@ -412,36 +450,44 @@ def _iteration() -> tuple[int, dict[str, object]]:
 
 
 def iteration() -> int:
-    """Run exactly one GitHub-driven orchestration pass."""
-    code, result = _iteration()
+    """Run exactly one GitHub-driven orchestration pass under the process lock."""
+    try:
+        config = load_config(ROOT)
+        with orchestrator_process_lock(config.runtime.state_directory):
+            code, result = _iteration()
+    except (RuntimeError, ValueError) as exc:
+        _print({"status": "failed", "error": str(exc)})
+        return 1
     _print(result)
     return code
 
 
 def run_forever() -> int:
-    """Poll GitHub continuously in the foreground until interrupted."""
+    """Poll GitHub continuously while holding the single-runtime process lock."""
     try:
+        config = load_config(ROOT)
         control = load_control_plane_settings(ROOT)
-    except ValueError as exc:
+        with orchestrator_process_lock(config.runtime.state_directory):
+            _print(
+                {
+                    "status": "running",
+                    "mode": "github_control_plane",
+                    "poll_seconds": control.poll_seconds,
+                    "message": "GitHub Issues, comments and Project state are the command surface.",
+                }
+            )
+            try:
+                while True:
+                    _, result = _iteration()
+                    if result.get("status") != "idle":
+                        _print(result)
+                    time.sleep(control.poll_seconds)
+            except KeyboardInterrupt:
+                _print({"status": "stopped", "reason": "keyboard_interrupt"})
+                return 0
+    except (RuntimeError, ValueError) as exc:
         _print({"status": "failed", "error": str(exc)})
         return 1
-    _print(
-        {
-            "status": "running",
-            "mode": "github_control_plane",
-            "poll_seconds": control.poll_seconds,
-            "message": "GitHub Issues, comments and Project state are the command surface.",
-        }
-    )
-    try:
-        while True:
-            _, result = _iteration()
-            if result.get("status") != "idle":
-                _print(result)
-            time.sleep(control.poll_seconds)
-    except KeyboardInterrupt:
-        _print({"status": "stopped", "reason": "keyboard_interrupt"})
-        return 0
 
 
 def proposal() -> int:
@@ -452,49 +498,50 @@ def proposal() -> int:
     now_utc = datetime.now(UTC)
     try:
         config, settings, github = _trusted_github()
-        runtime_state = RuntimeStateStore(config.runtime.state_directory)
-        workflow_state = StateStore(config.runtime.state_directory)
-        state = runtime_state
-        waiting = workflow_state.latest_waiting()
-        if waiting is not None:
-            _print(_workflow_result(waiting))
-            return 0
-        decision = check_configurable_usage_budget(
-            root=ROOT,
-            executable=config.runtime.codex_executable,
-        )
-        if not decision.allowed:
-            _print({"status": "skipped_usage_guard", "usage_guard": decision.as_dict()})
-            return 0
-        budget = IterationBudget(settings.budget)
-        budget.consume_task()
-        local_date = local_now(settings, now_utc).date().isoformat()
-        iteration_id = state.start_iteration(local_date, now_utc)
-        agent = BudgetedAgentRunner(
-            CodexCliRunner(
+        with orchestrator_process_lock(config.runtime.state_directory):
+            runtime_state = RuntimeStateStore(config.runtime.state_directory)
+            workflow_state = StateStore(config.runtime.state_directory)
+            state = runtime_state
+            waiting = workflow_state.latest_waiting()
+            if waiting is not None:
+                _print(_workflow_result(waiting))
+                return 0
+            decision = check_configurable_usage_budget(
                 root=ROOT,
                 executable=config.runtime.codex_executable,
-                sandbox=config.runtime.codex_sandbox,
-                web_search=config.runtime.codex_web_search,
-            ),
-            budget,
-        )
-        result = ProposalWorkflow(
-            root=ROOT,
-            config=config,
-            state=workflow_state,
-            agent=agent,
-            github=github,
-        ).run()
-        success = result.get("status") == "waiting_human"
-        state.finish_iteration(
-            iteration_id,
-            status="success" if success else "failed",
-            reason=str(result.get("status")),
-            budget=budget.as_dict(),
-        )
-        iteration_id = None
-        result["iteration_budget"] = budget.as_dict()
+            )
+            if not decision.allowed:
+                _print({"status": "skipped_usage_guard", "usage_guard": decision.as_dict()})
+                return 0
+            budget = IterationBudget(settings.budget)
+            budget.consume_task()
+            local_date = local_now(settings, now_utc).date().isoformat()
+            iteration_id = state.start_iteration(local_date, now_utc)
+            agent = BudgetedAgentRunner(
+                CodexCliRunner(
+                    root=ROOT,
+                    executable=config.runtime.codex_executable,
+                    sandbox=config.runtime.codex_sandbox,
+                    web_search=config.runtime.codex_web_search,
+                ),
+                budget,
+            )
+            result = ProposalWorkflow(
+                root=ROOT,
+                config=config,
+                state=workflow_state,
+                agent=agent,
+                github=github,
+            ).run()
+            success = result.get("status") == "waiting_human"
+            state.finish_iteration(
+                iteration_id,
+                status="success" if success else "failed",
+                reason=str(result.get("status")),
+                budget=budget.as_dict(),
+            )
+            iteration_id = None
+            result["iteration_budget"] = budget.as_dict()
     except (RuntimeError, ValueError) as exc:
         if state is not None and iteration_id is not None:
             state.finish_iteration(
