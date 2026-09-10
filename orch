@@ -46,10 +46,12 @@ ensure_runtime() {
 ask_yes_no() {
   local prompt="$1"
   local answer
+  local normalized
   while true; do
     printf '%s [y/N] ' "$prompt"
     IFS= read -r answer
-    case "${answer,,}" in
+    normalized="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
+    case "$normalized" in
       y|yes) return 0 ;;
       n|no|'') return 1 ;;
       *) printf 'Please answer y or n.\n' ;;
@@ -115,6 +117,8 @@ configure_launchd() {
     printf 'launchd supervision is available only on macOS; continuing without it.\n'
   fi
 
+  ORCHESTRATOR_LAUNCHD_ENABLED="$enabled"
+  ORCHESTRATOR_LAUNCHD_AUTOSTART="$autostart"
   printf 'ORCHESTRATOR_LAUNCHD_ENABLED=%q\n' "$enabled" >> "$ENV_FILE"
   printf 'ORCHESTRATOR_LAUNCHD_AUTOSTART=%q\n' "$autostart" >> "$ENV_FILE"
 }
