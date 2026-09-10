@@ -30,6 +30,17 @@ def test_launcher_loads_local_secrets_and_runtime_path() -> None:
     assert "python3 -m venv" in launcher
 
 
+def test_init_installs_user_global_orch_command() -> None:
+    launcher = (ROOT / "orch").read_text(encoding="utf-8")
+    assert 'GLOBAL_BIN_DIR="$HOME/.local/bin"' in launcher
+    assert 'GLOBAL_COMMAND="$GLOBAL_BIN_DIR/orch"' in launcher
+    assert "install_global_command" in launcher
+    assert "# AI First Learning App global orchestrator" in launcher
+    assert 'exec {shlex.quote(repository_launcher)} \\"$@\\"' in launcher
+    assert 'export PATH=\"$HOME/.local/bin:$PATH\"' in launcher
+    assert "sudo" not in launcher
+
+
 def test_init_makes_launchd_and_autostart_separate_opt_in_choices() -> None:
     launcher = (ROOT / "orch").read_text(encoding="utf-8")
     assert "Create launchd supervision" in launcher
