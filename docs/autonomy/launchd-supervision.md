@@ -69,8 +69,7 @@ delete an unrelated global `orch` command.
 After removing the integration, uninstall asks separately whether the generated local runtime should
 also be deleted. The default is **No**. If accepted, `.local/` and `.venv/` are deleted, including the
 copied GitHub App PEM, stored Project token, launchd files, and local logs. If declined, the local
-secrets/runtime are preserved so `./orch init` can be run again without losing the repository
-checkout.
+secrets/runtime are preserved so the repository launcher can be initialized again later.
 
 Uninstall does not delete the repository and does not revoke the GitHub App private key or Project
 PAT remotely. If local runtime data is deleted, only the copied PEM and locally stored PAT value are
