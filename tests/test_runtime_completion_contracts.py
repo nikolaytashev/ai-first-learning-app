@@ -8,11 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_specialist_schema_and_backlog_runtime_exist() -> None:
     assert (ROOT / "schemas/specialist-review.schema.json").is_file()
     backlog = (ROOT / "scripts/orchestrator/backlog.py").read_text(encoding="utf-8")
+    proposal = (ROOT / "scripts/orchestrator/proposal.py").read_text(encoding="utf-8")
     state = (ROOT / "scripts/orchestrator/state.py").read_text(encoding="utf-8")
     assert "has_active_managed_backlog" in backlog
     assert "ProposalWorkflow" in backlog
     assert "completed_features" in backlog
     assert "supplemental_context=delivered_context" in backlog
+    assert "Supplemental delivered-product history" in proposal
     assert "state.mark_completed(waiting.workflow_id)" in backlog
     assert "def mark_completed(" in state
 
