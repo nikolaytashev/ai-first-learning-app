@@ -6,6 +6,7 @@ on:
       - autonomy/runtime-completion
     paths:
       - scripts/_temp_runtime_completion_patch.py
+      - scripts/_temp_runtime_completion_fix.py
       - .github/workflows/_temp-runtime-completion.yml
 
 permissions:
@@ -26,17 +27,19 @@ jobs:
       - name: Install validation dependencies
         run: python -m pip install -r requirements-dev.lock
       - name: Apply production patch
-        run: python scripts/_temp_runtime_completion_patch.py
+        run: |
+          python scripts/_temp_runtime_completion_patch.py
+          python scripts/_temp_runtime_completion_fix.py
       - name: Compile generated Python
         run: |
           python -m py_compile scripts/orchestrator/implementation.py scripts/orchestrator/backlog.py scripts/run_orchestrator.py || {
-            nl -ba scripts/orchestrator/implementation.py | sed -n '595,620p'
+            nl -ba scripts/orchestrator/implementation.py | sed -n '590,650p'
             exit 1
           }
       - name: Format production files
         run: ruff format scripts tests
       - name: Remove temporary patch machinery
-        run: rm scripts/_temp_runtime_completion_patch.py .github/workflows/_temp-runtime-completion.yml
+        run: rm scripts/_temp_runtime_completion_patch.py scripts/_temp_runtime_completion_fix.py .github/workflows/_temp-runtime-completion.yml
       - name: Validate
         run: |
           python scripts/validate_repository.py
