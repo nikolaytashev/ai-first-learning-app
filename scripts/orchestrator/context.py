@@ -21,8 +21,23 @@ def _load_index(root: Path) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], raw)
 
 
-def select_context_documents(root: Path, role: str, task_types: Sequence[str]) -> list[JsonObject]:
-    """Load only indexed documents relevant to a role and task."""
+def _safe_content_path(root: Path, relative_path: str) -> Path:
+    candidate = (root / relative_path).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError(f"context path leaves repository: {relative_path}") from exc
+    return candidate
+
+
+def select_context_documents(
+    root: Path,
+    role: str,
+    task_types: Sequence[str],
+    *,
+    content_root: Path | None = None,
+) -> list[JsonObject]:
+    """Load indexed context using trusted selection metadata and optionally fresh app content."""
     index = _load_index(root)
     raw_documents = index.get("documents")
     if not isinstance(raw_documents, list):
@@ -30,6 +45,7 @@ def select_context_documents(root: Path, role: str, task_types: Sequence[str]) -
 
     requested_tasks = set(task_types)
     selected: list[JsonObject] = []
+    resolved_content_root = root if content_root is None else content_root
     for raw_entry in raw_documents:
         if not isinstance(raw_entry, Mapping):
             continue
@@ -49,7 +65,9 @@ def select_context_documents(root: Path, role: str, task_types: Sequence[str]) -
         authority_value = entry.get("authority")
         if not isinstance(path_value, str) or not isinstance(authority_value, str):
             continue
-        path = root / path_value
+        trusted_path = _safe_content_path(root, path_value)
+        fresh_path = _safe_content_path(resolved_content_root, path_value)
+        path = fresh_path if fresh_path.is_file() else trusted_path
         selected.append(
             {
                 "path": path_value,
