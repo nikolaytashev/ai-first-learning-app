@@ -137,6 +137,23 @@ def doctor() -> int:
     return 0 if not errors else 1
 
 
+def project_bootstrap() -> int:
+    """Reconcile GitHub Project fields/options to the checked-in contract."""
+    try:
+        config = load_config(ROOT)
+        token_provider = load_github_token_provider(config, root=ROOT)
+        github = GitHubClient(config, token_provider)
+        errors = github.verify_identity_and_scope()
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        result = github.reconcile_project_contract()
+    except (RuntimeError, ValueError) as exc:
+        _print({"status": "failed", "error": str(exc)})
+        return 1
+    _print(result)
+    return 0
+
+
 def usage() -> int:
     """Show whether current Codex account usage permits a new agent workflow."""
     try:
@@ -492,11 +509,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="AI First Learning local orchestrator")
     parser.add_argument(
         "command",
-        choices=("doctor", "usage", "policy", "resume", "iteration", "run", "proposal"),
+        choices=(
+            "doctor",
+            "project-bootstrap",
+            "usage",
+            "policy",
+            "resume",
+            "iteration",
+            "run",
+            "proposal",
+        ),
     )
     args = parser.parse_args()
     if args.command == "doctor":
         return doctor()
+    if args.command == "project-bootstrap":
+        return project_bootstrap()
     if args.command == "usage":
         return usage()
     if args.command == "policy":

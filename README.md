@@ -153,6 +153,7 @@ These commands are machine/bootstrap controls; product commands belong in GitHub
 | Local command | Purpose |
 | --- | --- |
 | `python scripts/run_orchestrator.py doctor` | Fail-closed verification of local checkout, Codex, GitHub identity, Project fields and `main` ruleset. No agent execution or GitHub mutation. |
+| `python -m scripts.run_orchestrator project-bootstrap` | Idempotently create missing Project custom fields and add missing single-select options from `config/github.yaml`. Existing fields/options are preserved; type mismatches fail closed. |
 | `python scripts/run_orchestrator.py usage` | Inspect the current Codex usage-reserve decision. |
 | `python scripts/run_orchestrator.py policy` | Print resolved cadence, control-plane, implementation and usage policy. |
 | `python scripts/run_orchestrator.py iteration` | Run one GitHub control-plane pass and, when cadence/safety gates permit, at most one bounded Task implementation pass. |
@@ -197,8 +198,7 @@ local Markdown links, issue forms and required repository files.
 ## Bootstrap sequence
 
 1. Configure the GitHub Project number and URL.
-2. Ensure the Project contains all fields/options in `config/github.yaml`, including the new
-   `Origin` single-select field with `Human` and `Agent` options.
+2. Run `python -m scripts.run_orchestrator project-bootstrap` to reconcile the Project custom fields/options from `config/github.yaml`.
 3. Create/install the repository-scoped GitHub App using `docs/autonomy/github-app-setup.md`.
 4. Keep the active no-bypass `Protect main` ruleset with PR requirement, conversation resolution,
    deletion/force-push protection and required `repository-validation` check.
