@@ -73,7 +73,8 @@ secrets/runtime are preserved so `./orch init` can be run again without losing t
 checkout.
 
 Uninstall does not delete the repository and does not revoke the GitHub App private key or Project
-PAT remotely. Revoke those separately in GitHub if the credentials themselves must be invalidated.
+PAT remotely. If local runtime data is deleted, only the copied PEM and locally stored PAT value are
+removed from this checkout; revoke the credentials separately in GitHub if they must be invalidated.
 
 ## Local files
 
