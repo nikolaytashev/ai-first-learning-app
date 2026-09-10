@@ -63,6 +63,18 @@ def test_launchd_supervises_manual_runs_without_requiring_autostart() -> None:
     assert "status_launchd" in launcher
 
 
+def test_uninstall_removes_machine_integration_and_separately_confirms_local_data() -> None:
+    launcher = (ROOT / "orch").read_text(encoding="utf-8")
+    assert "uninstall_orchestrator" in launcher
+    assert 'launchctl bootout "$LAUNCHD_TARGET"' in launcher
+    assert 'rm -f "$AUTOSTART_PLIST" "$LAUNCHD_PLIST"' in launcher
+    assert "remove_global_command" in launcher
+    assert 'rm -f "$GLOBAL_COMMAND"' in launcher
+    assert "Also remove local secrets, logs, state, and Python runtime" in launcher
+    assert 'rm -rf "$LOCAL_DIR" "$VENV_DIR"' in launcher
+    assert "GitHub credentials themselves were not revoked" in launcher
+
+
 def test_foreground_run_remains_available_for_debugging() -> None:
     launcher = (ROOT / "orch").read_text(encoding="utf-8")
     assert '"ProgramArguments": [str(root / "orch"), "run"]' in launcher
