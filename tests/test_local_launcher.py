@@ -38,7 +38,7 @@ def test_init_installs_user_global_orch_command() -> None:
     assert "# AI First Learning App global orchestrator" in launcher
     assert "shlex.quote(repository_launcher)" in launcher
     assert '"$@"' in launcher
-    assert '$HOME/.local/bin:$PATH' in launcher
+    assert "$HOME/.local/bin:$PATH" in launcher
     assert "sudo" not in launcher
 
 
