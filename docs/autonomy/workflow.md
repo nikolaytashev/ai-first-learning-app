@@ -17,7 +17,11 @@ Epic (optional)
 ```
 
 A human-created Epic/Feature issue is canonical and is not duplicated by an agent. When no managed backlog exists, the continuous runtime may generate one bounded Agent-origin Feature proposal from the approved mission/product context; it always stops at Product Approval `Pending` and requires human approval before implementation. Native GitHub
-sub-issues represent hierarchy. Native blocked-by issue dependencies represent task ordering.
+sub-issues represent hierarchy. Native blocked-by issue dependencies represent true prerequisite
+ordering. A Task may legitimately have no dependencies; BA adds edges only when another child must
+complete first. BA owns the DAG. Specialists, Implementer, QA and Reviewer may emit a structured
+`replan_required` finding for a concrete missing dependency/decomposition defect, which is routed
+back through BA rather than mutating the graph directly.
 Project field `Origin` distinguishes `Human` from `Agent` work, while hidden issue metadata stores
 recoverable orchestration identity, parent/key, revision, approval digest and execution state.
 
@@ -74,7 +78,8 @@ For one executable Task:
 
 1. Re-read Task and parent Feature and verify current approval digest.
 2. Verify native blocked-by dependencies are complete.
-3. Fetch current `origin/main` and create/reuse an isolated `agent/*` branch/worktree synchronized onto that latest application state without moving the orchestrator root checkout.
+3. Keep the orchestrator root checkout pinned. Fetch current `origin/main` and create an isolated
+   `agent/*` branch/worktree from that latest application state. Record the starting `base_sha`.
 4. Recover interrupted `running`/`review` Tasks idempotently from an existing owned PR or return unpublished work to rework.
 5. Run required Software Architect and/or Instructional Designer specialist gates when BA classification requests them; unresolved human decisions block.
 6. Run the Implementer in `workspace-write` sandbox with only Task/Feature scope.
@@ -82,7 +87,9 @@ For one executable Task:
 6. Run independent QA against acceptance criteria and regression evidence.
 7. Run independent code/architecture/security review.
 8. Return bounded findings to the Implementer and repeat within corrective-cycle budget.
-9. Re-read Task/Feature approval after agent stages and again before publication.
+9. Before final validation/review, refresh the uncommitted candidate onto latest `origin/main`; if
+   main advances again after review, repeat synchronization + validation + QA + review. Record
+   `validated_against_sha`. Re-read Task/Feature approval before publication.
 10. Commit locally under orchestrator identity and push only the non-default branch.
 11. Create/reconcile one draft pull request containing stable task/workflow markers.
 12. Set the Task to `In Review` / `Awaiting Human` and stop.
@@ -125,3 +132,12 @@ hard gates.
 
 Invalid structured output is a failed role run. It must not update GitHub desired state or advance
 another role.
+
+## Root/runtime versus application snapshots
+
+The local root checkout is the trusted, manually updated orchestrator runtime. It is never
+automatically fast-forwarded by `orch`. Application truth is `origin/main`. PM/BA/backlog planning
+runs from a detached latest-`origin/main` application snapshot while schemas/config remain trusted
+from the pinned root. Task specialists, Implementer, QA and Reviewer share the Task worktree.
+Feature QA runs from its own detached latest-`origin/main` snapshot. This keeps all product agents on
+current merged application code without hot-swapping the running orchestrator implementation.

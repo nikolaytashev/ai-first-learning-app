@@ -56,8 +56,10 @@ class ProposalWorkflow:
         agent: AgentRunner,
         github: ProposalGitHub,
         supplemental_context: str | None = None,
+        context_root: Path | None = None,
     ) -> None:
         self._root = root
+        self._context_root = context_root or root
         self._config = config
         self._state = state
         self._agent = agent
@@ -79,7 +81,7 @@ class ProposalWorkflow:
 
         pm_context = render_context(
             select_context_documents(
-                self._root,
+                self._context_root,
                 "product_manager",
                 ["bootstrap", "proposal_generation", "discovery", "planning"],
             )
@@ -98,7 +100,7 @@ class ProposalWorkflow:
 
         ba_context = render_context(
             select_context_documents(
-                self._root,
+                self._context_root,
                 "business_analysis",
                 ["proposal_generation", "acceptance_criteria", "requirements", "planning"],
             )

@@ -4,37 +4,162 @@
   "title": "Specialist Task Review",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "workflow_id", "issue_number", "role", "verdict", "summary", "implementation_requirements", "decisions_required", "provenance"],
+  "required": [
+    "schema_version",
+    "workflow_id",
+    "issue_number",
+    "role",
+    "verdict",
+    "summary",
+    "implementation_requirements",
+    "decisions_required",
+    "provenance",
+    "replan_request"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "workflow_id": {"type": "string", "minLength": 1},
-    "issue_number": {"type": "integer", "minimum": 1},
-    "role": {"enum": ["software_architect", "instructional_designer"]},
-    "verdict": {"enum": ["passed", "changes_required", "decision_required", "blocked"]},
-    "summary": {"type": "string", "minLength": 3},
+    "schema_version": {
+      "const": 1
+    },
+    "workflow_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issue_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "role": {
+      "enum": [
+        "software_architect",
+        "instructional_designer"
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "passed",
+        "changes_required",
+        "decision_required",
+        "blocked",
+        "replan_required"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 3
+    },
     "implementation_requirements": {
       "type": "array",
-      "items": {"type": "string", "minLength": 3}
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
     },
     "decisions_required": {
       "type": "array",
-      "items": {"type": "string", "minLength": 3}
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
     },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["role", "agent_version", "generated_at"],
+      "required": [
+        "role",
+        "agent_version",
+        "generated_at"
+      ],
       "properties": {
-        "role": {"enum": ["software_architect", "instructional_designer"]},
-        "agent_version": {"type": "string", "minLength": 1},
-        "generated_at": {"type": "string", "format": "date-time"}
+        "role": {
+          "enum": [
+            "software_architect",
+            "instructional_designer"
+          ]
+        },
+        "agent_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "replan_request": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reason",
+        "related_task_keys"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "missing_dependency",
+            "invalid_decomposition",
+            "sequencing_conflict",
+            "scope_boundary"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 3
+        },
+        "related_task_keys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+          }
+        }
       }
     }
   },
   "allOf": [
     {
-      "if": {"properties": {"verdict": {"const": "decision_required"}}},
-      "then": {"properties": {"decisions_required": {"minItems": 1}}}
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "decision_required"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "decisions_required": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "replan_required"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "replan_request": {
+            "type": "object"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "replan_request": {
+            "type": "null"
+          }
+        }
+      }
     }
   ]
 }

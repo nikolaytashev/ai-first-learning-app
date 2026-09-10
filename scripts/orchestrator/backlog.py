@@ -32,6 +32,7 @@ def generate_next_feature_if_empty(
     config: OrchestratorConfig,
     github: GitHubClient,
     agent: AgentRunner,
+    context_root: Path | None = None,
 ) -> JsonObject:
     """Create at most one human-gated Feature proposal when no managed backlog exists."""
     if has_active_managed_backlog(github):
@@ -83,4 +84,5 @@ def generate_next_feature_if_empty(
         agent=agent,
         github=github,
         supplemental_context=delivered_context,
+        context_root=context_root,
     ).run()

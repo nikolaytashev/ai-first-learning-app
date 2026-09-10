@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from scripts.orchestrator.validation import run_validation
@@ -27,7 +28,7 @@ def test_runtime_integrates_recovery_specialists_and_backlog() -> None:
     assert '"rebase"' in implementation
     assert "workflow_id: str" in implementation
     assert "agent/task-{task.number}-{slug}-{attempt}" in implementation
-    assert "_validate_current_application_state" in implementation
+    assert "_sync_uncommitted_work_with_main" in implementation
     assert "generate_next_feature_if_empty" in runtime
 
 
@@ -47,3 +48,39 @@ def test_integration_validation_can_skip_candidate_guardrail_check(tmp_path: Pat
         enforce_guardrails=False,
     )
     assert result.status == "passed"
+
+
+def test_dependency_replan_and_latest_app_snapshot_contracts() -> None:
+    specialist_schema = json.loads(
+        (ROOT / "schemas/specialist-review.schema.json").read_text(encoding="utf-8")
+    )
+    implementation_schema = json.loads(
+        (ROOT / "schemas/implementation-result.schema.json").read_text(encoding="utf-8")
+    )
+    review_schema = json.loads(
+        (ROOT / "schemas/agent-review.schema.json").read_text(encoding="utf-8")
+    )
+    assert "replan_required" in specialist_schema["properties"]["verdict"]["enum"]
+    assert "replan_required" in implementation_schema["properties"]["status"]["enum"]
+    assert "replan_required" in review_schema["properties"]["verdict"]["enum"]
+
+    implementation = (ROOT / "scripts/orchestrator/implementation.py").read_text(encoding="utf-8")
+    control = (ROOT / "scripts/orchestrator/control_plane.py").read_text(encoding="utf-8")
+    runtime = (ROOT / "scripts/run_orchestrator.py").read_text(encoding="utf-8")
+    assert "_task_graph_context" in implementation
+    assert "_request_parent_replan" in implementation
+    assert 'metadata["base_sha"]' in implementation
+    assert 'metadata["validated_against_sha"]' in implementation
+    assert "_sync_uncommitted_work_with_main" in implementation
+    assert '"agent_replan_requests": []' in control
+    assert "_complete_agent_replan" in control
+    assert "application_root=planning_snapshot.path" in runtime
+    assert "context_root=backlog_snapshot.path" in runtime
+
+
+def test_application_snapshot_helper_never_moves_root_branch() -> None:
+    snapshot = (ROOT / "scripts/orchestrator/application_snapshot.py").read_text(encoding="utf-8")
+    assert '"worktree", "add", "--detach"' in snapshot
+    assert '"fetch", "origin", default_branch' in snapshot
+    assert '"checkout"' not in snapshot
+    assert '"pull"' not in snapshot

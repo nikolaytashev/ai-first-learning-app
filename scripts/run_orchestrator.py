@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from scripts.orchestrator.application_snapshot import latest_application_snapshot
 from scripts.orchestrator.backlog import generate_next_feature_if_empty
 from scripts.orchestrator.codex import CodexCliRunner
 from scripts.orchestrator.config import load_config
@@ -333,23 +334,30 @@ def _iteration() -> tuple[int, dict[str, object]]:
             }
 
         budget = IterationBudget(settings.budget)
-        planning_agent = BudgetedAgentRunner(
-            CodexCliRunner(
+        with latest_application_snapshot(
+            ROOT,
+            config.runtime.state_directory,
+            config.repository.default_branch,
+            purpose="control-plane",
+        ) as planning_snapshot:
+            planning_agent = BudgetedAgentRunner(
+                CodexCliRunner(
+                    root=planning_snapshot.path,
+                    executable=config.runtime.codex_executable,
+                    sandbox=config.runtime.codex_sandbox,
+                    web_search=config.runtime.codex_web_search,
+                ),
+                budget,
+            )
+            control = HardenedControlPlaneWorkflow(
                 root=ROOT,
-                executable=config.runtime.codex_executable,
-                sandbox=config.runtime.codex_sandbox,
-                web_search=config.runtime.codex_web_search,
-            ),
-            budget,
-        )
-        control = HardenedControlPlaneWorkflow(
-            root=ROOT,
-            config=config,
-            settings=control_settings,
-            agent=planning_agent,
-            github=github,
-        )
-        control_result = control.run_iteration()
+                application_root=planning_snapshot.path,
+                config=config,
+                settings=control_settings,
+                agent=planning_agent,
+                github=github,
+            )
+            control_result = control.run_iteration()
 
         repository_health = RepositoryHealthChecker(
             config,
@@ -399,15 +407,31 @@ def _iteration() -> tuple[int, dict[str, object]]:
 
         backlog_result: dict[str, object] = {"status": "not_checked"}
         if implementation_result.get("status") == "idle" and control_result.ready_tasks == 0:
-            backlog_result = cast(
-                dict[str, object],
-                generate_next_feature_if_empty(
-                    root=ROOT,
-                    config=config,
-                    github=github,
-                    agent=planning_agent,
-                ),
-            )
+            with latest_application_snapshot(
+                ROOT,
+                config.runtime.state_directory,
+                config.repository.default_branch,
+                purpose="backlog",
+            ) as backlog_snapshot:
+                backlog_agent = BudgetedAgentRunner(
+                    CodexCliRunner(
+                        root=backlog_snapshot.path,
+                        executable=config.runtime.codex_executable,
+                        sandbox=config.runtime.codex_sandbox,
+                        web_search=config.runtime.codex_web_search,
+                    ),
+                    budget,
+                )
+                backlog_result = cast(
+                    dict[str, object],
+                    generate_next_feature_if_empty(
+                        root=ROOT,
+                        context_root=backlog_snapshot.path,
+                        config=config,
+                        github=github,
+                        agent=backlog_agent,
+                    ),
+                )
 
         pr_outcomes_reconciled = implementation_result.get("pr_outcomes_reconciled", 0)
         feature_checks = implementation_result.get("feature_checks", 0)

@@ -4,31 +4,159 @@
   "title": "Implementation Result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "workflow_id", "issue_number", "status", "summary", "changed_files", "tests_to_run", "blocker", "provenance"],
+  "required": [
+    "schema_version",
+    "workflow_id",
+    "issue_number",
+    "status",
+    "summary",
+    "changed_files",
+    "tests_to_run",
+    "blocker",
+    "provenance",
+    "replan_request"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "workflow_id": {"type": "string", "minLength": 1},
-    "issue_number": {"type": "integer", "minimum": 1},
-    "status": {"enum": ["completed", "blocked"]},
-    "summary": {"type": "string", "minLength": 3},
-    "changed_files": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-    "tests_to_run": {"type": "array", "items": {"type": "string", "minLength": 1}},
-    "blocker": {"type": ["string", "null"]},
+    "schema_version": {
+      "const": 1
+    },
+    "workflow_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issue_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "blocked",
+        "replan_required"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 3
+    },
+    "changed_files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests_to_run": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "blocker": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["role", "agent_version", "generated_at"],
+      "required": [
+        "role",
+        "agent_version",
+        "generated_at"
+      ],
       "properties": {
-        "role": {"const": "implementer"},
-        "agent_version": {"type": "string", "minLength": 1},
-        "generated_at": {"type": "string", "format": "date-time"}
+        "role": {
+          "const": "implementer"
+        },
+        "agent_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "replan_request": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reason",
+        "related_task_keys"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "missing_dependency",
+            "invalid_decomposition",
+            "sequencing_conflict",
+            "scope_boundary"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 3
+        },
+        "related_task_keys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+          }
+        }
       }
     }
   },
   "allOf": [
     {
-      "if": {"properties": {"status": {"const": "blocked"}}},
-      "then": {"properties": {"blocker": {"type": "string", "minLength": 3}}}
+      "if": {
+        "properties": {
+          "status": {
+            "const": "blocked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "blocker": {
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "replan_required"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "replan_request": {
+            "type": "object"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "replan_request": {
+            "type": "null"
+          }
+        }
+      }
     }
   ]
 }
