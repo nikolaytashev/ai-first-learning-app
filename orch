@@ -20,6 +20,8 @@ LAUNCHD_DOMAIN="gui/$(id -u)"
 LAUNCHD_TARGET="$LAUNCHD_DOMAIN/$LAUNCHD_LABEL"
 USER_LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 AUTOSTART_PLIST="$USER_LAUNCH_AGENTS/$LAUNCHD_LABEL.plist"
+GLOBAL_BIN_DIR="$HOME/.local/bin"
+GLOBAL_COMMAND="$GLOBAL_BIN_DIR/orch"
 
 fail() {
   printf 'orchestrator: %s\n' "$*" >&2
@@ -57,6 +59,51 @@ ask_yes_no() {
       *) printf 'Please answer y or n.\n' ;;
     esac
   done
+}
+
+shell_profile() {
+  case "${SHELL##*/}" in
+    zsh) printf '%s\n' "$HOME/.zshrc" ;;
+    bash) printf '%s\n' "$HOME/.bashrc" ;;
+    *) printf '%s\n' "$HOME/.profile" ;;
+  esac
+}
+
+install_global_command() {
+  local profile
+  local path_line='export PATH="$HOME/.local/bin:$PATH"'
+
+  mkdir -p "$GLOBAL_BIN_DIR"
+  chmod 700 "$GLOBAL_BIN_DIR"
+
+  if [[ -e "$GLOBAL_COMMAND" ]] && ! grep -Fq '# AI First Learning App global orchestrator' "$GLOBAL_COMMAND"; then
+    fail "global command already exists and is not managed by this project: $GLOBAL_COMMAND"
+  fi
+
+  "$PYTHON" - "$GLOBAL_COMMAND" "$ROOT/orch" <<'PY'
+from __future__ import annotations
+
+import shlex
+import sys
+from pathlib import Path
+
+command = Path(sys.argv[1])
+repository_launcher = sys.argv[2]
+command.write_text(
+    "#!/bin/sh\n"
+    "# AI First Learning App global orchestrator\n"
+    f"exec {shlex.quote(repository_launcher)} \"$@\"\n",
+    encoding="utf-8",
+)
+PY
+  chmod 700 "$GLOBAL_COMMAND"
+
+  profile="$(shell_profile)"
+  touch "$profile"
+  if ! grep -Fq '$HOME/.local/bin' "$profile"; then
+    printf '\n# AI First Learning App global orchestrator command\n%s\n' "$path_line" >> "$profile"
+  fi
+  ORCHESTRATOR_GLOBAL_PROFILE="$profile"
 }
 
 write_launchd_plist() {
@@ -146,16 +193,22 @@ initialize_local_secrets() {
   chmod 600 "$ENV_FILE"
 
   ensure_runtime
+  install_global_command
   configure_launchd
   chmod 600 "$ENV_FILE"
 
   printf 'Local orchestrator runtime initialized. Secrets are stored only in %s\n' "$LOCAL_DIR"
+  printf 'Global command installed at %s\n' "$GLOBAL_COMMAND"
+  case ":$PATH:" in
+    *":$GLOBAL_BIN_DIR:"*) ;;
+    *) printf 'Open a new terminal to use `orch`, or run once: source %s\n' "$ORCHESTRATOR_GLOBAL_PROFILE" ;;
+  esac
   if [[ "${ORCHESTRATOR_LAUNCHD_ENABLED:-0}" == "1" ]]; then
-    printf 'Run ./orch to start the launchd-supervised worker.\n'
+    printf 'Run orch to start the launchd-supervised worker.\n'
   else
-    printf 'Run ./orch to start the foreground worker.\n'
+    printf 'Run orch to start the foreground worker.\n'
   fi
-  printf 'Use ./orch doctor and ./orch project-bootstrap for preflight setup.\n'
+  printf 'Use orch doctor and orch project-bootstrap for preflight setup.\n'
 }
 
 if [[ "${1:-}" == "init" ]]; then
@@ -199,7 +252,7 @@ start_launchd() {
   fi
   launchctl kickstart -k "$LAUNCHD_TARGET"
   printf 'Orchestrator started under launchd supervision.\n'
-  printf 'Status: ./orch status\nLogs:   ./orch logs\nStop:   ./orch stop\n'
+  printf 'Status: orch status\nLogs:   orch logs\nStop:   orch stop\n'
 }
 
 stop_launchd() {
