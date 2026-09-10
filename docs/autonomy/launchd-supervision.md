@@ -6,9 +6,10 @@ optional local runtime supervisor using two independent opt-in questions.
 ## Global command
 
 The one-time `./orch init` command also installs a user-scoped global `orch` launcher at
-`~/.local/bin/orch`. The launcher contains no secrets; it forwards commands to the initialized
-repository checkout. If `~/.local/bin` is not already on `PATH`, initialization adds it
-idempotently to the current user's shell profile (`~/.zshrc` for zsh, `~/.bashrc` for bash, or
+`~/.local/bin/orch`. This global command installation is part of every successful initialization and
+is independent of both launchd choices. The launcher contains no secrets; it forwards commands to
+the initialized repository checkout. If `~/.local/bin` is not already on `PATH`, initialization adds
+it idempotently to the current user's shell profile (`~/.zshrc` for zsh, `~/.bashrc` for bash, or
 `~/.profile` otherwise).
 
 A shell process cannot modify its parent's environment, so when initialization adds the PATH entry
