@@ -187,7 +187,6 @@ for autonomous publication.
 
 After a machine restart, no exports or virtual-environment activation are needed. From the repository root, `./orch` starts the continuous worker and `./orch <command>` runs any local control command. The launcher reloads `.local/orchestrator.env`, supplies the App PEM path and refreshes locked Python dependencies when needed.
 
-
 GitHub is the durable product/control-plane source of truth. Managed issues contain hidden metadata
 for origin, hierarchy, revision, approval digest and execution state. Local `.orchestrator` SQLite
 state stores iteration/failure/notification counters and legacy proposal idempotency data.
