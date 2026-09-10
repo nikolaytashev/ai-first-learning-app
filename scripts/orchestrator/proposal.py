@@ -15,6 +15,7 @@ from typing import Protocol, cast
 from scripts.orchestrator.codex import AgentRunner
 from scripts.orchestrator.config import select_model
 from scripts.orchestrator.context import render_context, select_context_documents
+from scripts.orchestrator.control_plane import _metadata_marker
 from scripts.orchestrator.github import GitHubClient, ProjectSnapshot
 from scripts.orchestrator.model import IssueRef, JsonObject, OrchestratorConfig
 from scripts.orchestrator.state import StateStore, WorkflowState
@@ -429,8 +430,28 @@ Canonical context data:
         generated_note = (
             "Generated autonomously. Product approval is pending; implementation is not authorized."
         )
+        metadata = {
+            "schema": 1,
+            "managed": True,
+            "origin": "Agent",
+            "type": "Feature",
+            "parent": None,
+            "key": str(proposal.get("proposal_id") or "autonomous-feature").lower(),
+            "revision": 0,
+            "approval": "pending",
+            "approval_digest": None,
+            "current_digest": None,
+            "last_human_comment_id": 0,
+            "paused": False,
+            "execution_state": "idle",
+            "risk": "medium",
+            "size": str(proposal.get("size") or "M"),
+            "priority_override": None,
+            "specialist_roles": [],
+        }
         return "\n".join(
             [
+                _metadata_marker(metadata),
                 marker,
                 f"<!-- autonomy-workflow:{workflow_id} -->",
                 "## Problem",

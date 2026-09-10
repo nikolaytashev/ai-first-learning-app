@@ -16,7 +16,7 @@ Epic (optional)
     └── Task
 ```
 
-A human-created Epic/Feature issue is canonical and is not duplicated by an agent. Native GitHub
+A human-created Epic/Feature issue is canonical and is not duplicated by an agent. When no managed backlog exists, the continuous runtime may generate one bounded Agent-origin Feature proposal from the approved mission/product context; it always stops at Product Approval `Pending` and requires human approval before implementation. Native GitHub
 sub-issues represent hierarchy. Native blocked-by issue dependencies represent task ordering.
 Project field `Origin` distinguishes `Human` from `Agent` work, while hidden issue metadata stores
 recoverable orchestration identity, parent/key, revision, approval digest and execution state.
@@ -74,8 +74,10 @@ For one executable Task:
 
 1. Re-read Task and parent Feature and verify current approval digest.
 2. Verify native blocked-by dependencies are complete.
-3. Create/reuse an isolated `agent/*` branch and git worktree based on current `origin/main`.
-4. Run the Implementer in `workspace-write` sandbox with only Task/Feature scope.
+3. Fetch current `origin/main` and create/reuse an isolated `agent/*` branch/worktree synchronized onto that latest application state without moving the orchestrator root checkout.
+4. Recover interrupted `running`/`review` Tasks idempotently from an existing owned PR or return unpublished work to rework.
+5. Run required Software Architect and/or Instructional Designer specialist gates when BA classification requests them; unresolved human decisions block.
+6. Run the Implementer in `workspace-write` sandbox with only Task/Feature scope.
 5. Run deterministic validation selected from `config/validation.yaml`.
 6. Run independent QA against acceptance criteria and regression evidence.
 7. Run independent code/architecture/security review.

@@ -216,6 +216,7 @@ class ControlPlaneWorkflow:
             "risk": "medium",
             "size": "M",
             "priority_override": None,
+            "specialist_roles": [],
         }
 
     def _process(self, managed: ManagedIssue) -> tuple[bool, int]:
@@ -550,7 +551,12 @@ Required identity:
 - provenance.role: business_analysis
 
 For an Epic, desired children must be Features. For a Feature, desired children must be bounded
-Tasks that one implementation workflow can safely complete. Reuse existing issues when they still
+Tasks that one implementation workflow can safely complete. For every desired child set
+`specialist_roles`: include `software_architect` when architecture, security, privacy, persistence,
+data integrity, destructive migration, concurrency, or significant cross-component boundaries need
+independent technical design/review; include `instructional_designer` when the task creates or
+materially changes learning objectives, lessons, exercises, assessments, pathways, or pedagogical
+content. Use an empty list when no specialist is required. Reuse existing issues when they still
 represent desired work. Split oversized work. Preserve completed historical issues. For obsolete
 open work, list it in supersede_existing with an explicit audit reason; never request deletion.
 Human-created child issues may be superseded only with a clear reason. Dependencies must reference
@@ -719,6 +725,7 @@ Canonical repository context:
                 child_meta["key"] = item["key"]
                 child_meta["risk"] = item["risk"]
                 child_meta["size"] = item["size"]
+                child_meta["specialist_roles"] = item.get("specialist_roles", [])
                 body = self._child_body(child.body, child_meta, item)
                 child = self._github.update_issue(
                     child.number,
@@ -737,6 +744,7 @@ Canonical repository context:
                 )
                 child_meta["risk"] = item["risk"]
                 child_meta["size"] = item["size"]
+                child_meta["specialist_roles"] = item.get("specialist_roles", [])
                 marker = _metadata_marker(child_meta)
                 body = self._child_body(marker, child_meta, item)
                 ref = self._github.create_issue(cast(str, item["title"]), body)
@@ -813,6 +821,7 @@ Canonical repository context:
                 f"Priority: **{item.get('priority')}**  ",
                 f"Size: **{item.get('size')}**  ",
                 f"Risk: **{item.get('risk')}**",
+                f"Specialists: **{', '.join(item.get('specialist_roles', [])) or 'None'}**",
             ]
         )
         return _replace_metadata(_replace_spec(body, spec), metadata)
