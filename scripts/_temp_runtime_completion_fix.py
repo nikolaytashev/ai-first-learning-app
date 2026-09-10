@@ -56,6 +56,24 @@ replacements = [
             pr_number = metadata.get("pr_number")''',
     ),
     (
+        '''                candidate = self._github.get_pull_request(pr_number)
+                if f"<!-- orch-task:{task.number} -->" in candidate.body:
+                    pr = candidate''',
+        '''                numbered_pr = self._github.get_pull_request(pr_number)
+                if f"<!-- orch-task:{task.number} -->" in numbered_pr.body:
+                    recovered_pr = numbered_pr''',
+    ),
+    (
+        '''            if pr is None and isinstance(branch, str) and branch:
+                candidate = self._github.find_pull_request_by_head(branch)
+                if candidate is not None and f"<!-- orch-task:{task.number} -->" in candidate.body:
+                    pr = candidate''',
+        '''            if recovered_pr is None and isinstance(branch, str) and branch:
+                branch_pr = self._github.find_pull_request_by_head(branch)
+                if branch_pr is not None and f"<!-- orch-task:{task.number} -->" in branch_pr.body:
+                    recovered_pr = branch_pr''',
+    ),
+    (
         '''                    pr = candidate
             if pr is None and isinstance(branch, str) and branch:''',
         '''                    recovered_pr = candidate
@@ -68,6 +86,14 @@ replacements = [
                 metadata["pr_number"] = pr.number''',
         '''                    recovered_pr = candidate
             if recovered_pr is not None and recovered_pr.state == "open":
+                metadata["execution_state"] = "awaiting_merge"
+                metadata["pr_number"] = recovered_pr.number''',
+    ),
+    (
+        '''            if pr is not None and pr.state == "open":
+                metadata["execution_state"] = "awaiting_merge"
+                metadata["pr_number"] = pr.number''',
+        '''            if recovered_pr is not None and recovered_pr.state == "open":
                 metadata["execution_state"] = "awaiting_merge"
                 metadata["pr_number"] = recovered_pr.number''',
     ),
@@ -93,7 +119,6 @@ for old, new in replacements:
 
 path.write_text(text, encoding="utf-8")
 
-# Let the backlog proposal store retire a human-gated proposal after its managed Feature closes.
 state_path = Path("scripts/orchestrator/state.py")
 state = state_path.read_text(encoding="utf-8")
 anchor = '''    def mark_blocked(self, workflow_id: str) -> None:
