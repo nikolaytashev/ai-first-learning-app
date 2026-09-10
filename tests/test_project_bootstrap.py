@@ -42,7 +42,7 @@ class FakeProjectClient(GitHubClient):
     def project_snapshot(self) -> ProjectSnapshot:
         return self._snapshots.pop(0) if len(self._snapshots) > 1 else self._snapshots[0]
 
-    def _graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+    def _project_graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         self.calls.append((query, variables))
         return {}
 

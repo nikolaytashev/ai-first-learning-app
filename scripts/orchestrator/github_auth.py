@@ -29,13 +29,14 @@ class GitHubTokenProvider(Protocol):
 
 @dataclass(frozen=True)
 class StaticGitHubTokenProvider:
-    """Static token provider retained for the restricted-bot identity mode."""
+    """Static credential provider for externally injected long-lived tokens."""
 
     value: str
+    variable_name: str = "GITHUB_TOKEN"
 
     def token(self) -> str:
         if not self.value:
-            raise ValueError("GITHUB_TOKEN is required for restricted_bot")
+            raise ValueError(f"{self.variable_name} is required")
         return self.value
 
 
@@ -206,3 +207,27 @@ def load_github_token_provider(
         repository_full_name=config.repository.full_name,
         installation_id=installation_id,
     )
+
+
+def load_project_token_provider(
+    config: OrchestratorConfig,
+    repository_provider: GitHubTokenProvider,
+    environment: Mapping[str, str] | None = None,
+) -> GitHubTokenProvider:
+    """Use a classic PAT only for user-owned Project V2 operations.
+
+    GitHub App installation tokens remain the repository identity. GitHub currently
+    requires a user credential with the `project` scope to mutate user-owned Projects.
+    Organization-owned Projects continue to use the repository GitHub App provider.
+    """
+    project_url = config.project.url or ""
+    if "/users/" not in project_url:
+        return repository_provider
+    env = os.environ if environment is None else environment
+    value = env.get("GITHUB_PROJECT_TOKEN", "")
+    if not value:
+        raise ValueError(
+            "GITHUB_PROJECT_TOKEN is required for user-owned GitHub Project; "
+            "use a personal access token (classic) with only the project scope"
+        )
+    return StaticGitHubTokenProvider(value, "GITHUB_PROJECT_TOKEN")

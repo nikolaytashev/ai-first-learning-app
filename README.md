@@ -210,3 +210,12 @@ local Markdown links, issue forms and required repository files.
 9. Start `python scripts/run_orchestrator.py run` for continuous GitHub-controlled operation.
 10. From then on, create Epic/Feature Issues and use their comments plus `/orch` commands to direct
     product work.
+
+### User-owned GitHub Project authentication
+
+The repository GitHub App remains the automation identity for repository, Issue, PR and Git
+operations. GitHub currently does not allow an installation token to mutate a user-owned
+Project V2. For `/users/.../projects/...`, inject `GITHUB_PROJECT_TOKEN` as a personal access
+token (classic) with only the `project` scope. Do not grant `repo` scope and do not commit the
+token. Organization-owned Projects continue to use the GitHub App token.
+
