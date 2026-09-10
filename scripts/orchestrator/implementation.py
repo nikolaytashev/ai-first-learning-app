@@ -183,7 +183,7 @@ class ImplementationWorkflow:
         if metadata is None:
             raise RuntimeError("selected task lost its orchestration metadata")
         workflow_id = f"impl-{task.number}-{uuid.uuid4().hex[:12]}"
-        branch = self._branch_name(task, metadata)
+        branch = self._branch_name(task, metadata, workflow_id)
         worktree = self._worktree_path(task.number)
         metadata["workflow_id"] = workflow_id
         metadata["branch"] = branch
@@ -830,10 +830,11 @@ Deterministic integration validation:
             raise RuntimeError(f"git push failed: {detail}")
 
     @staticmethod
-    def _branch_name(task: IssueSnapshot, metadata: JsonObject) -> str:
+    def _branch_name(task: IssueSnapshot, metadata: JsonObject, workflow_id: str) -> str:
         key = str(metadata.get("key") or task.title).lower()
         slug = re.sub(r"[^a-z0-9]+", "-", key).strip("-")[:48] or "task"
-        return f"agent/task-{task.number}-{slug}"
+        attempt = re.sub(r"[^a-z0-9]+", "-", workflow_id.lower()).strip("-")[-12:]
+        return f"agent/task-{task.number}-{slug}-{attempt}"
 
     def _worktree_path(self, issue_number: int) -> Path:
         return self._config.runtime.state_directory / "worktrees" / f"task-{issue_number}"

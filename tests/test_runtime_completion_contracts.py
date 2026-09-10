@@ -18,6 +18,8 @@ def test_runtime_integrates_recovery_specialists_and_backlog() -> None:
     assert "recover_interrupted_tasks" in implementation
     assert "_run_specialists" in implementation
     assert '"rebase"' in implementation
+    assert "workflow_id: str" in implementation
+    assert "agent/task-{task.number}-{slug}-{attempt}" in implementation
     assert "_validate_current_application_state" in implementation
     assert "generate_next_feature_if_empty" in runtime
 
