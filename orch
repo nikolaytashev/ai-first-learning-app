@@ -106,6 +106,46 @@ PY
   ORCHESTRATOR_GLOBAL_PROFILE="$profile"
 }
 
+remove_global_command() {
+  local profile
+
+  if [[ -e "$GLOBAL_COMMAND" || -L "$GLOBAL_COMMAND" ]]; then
+    if grep -Fq '# AI First Learning App global orchestrator' "$GLOBAL_COMMAND"; then
+      rm -f "$GLOBAL_COMMAND"
+    else
+      fail "refusing to remove global command not managed by this project: $GLOBAL_COMMAND"
+    fi
+  fi
+
+  profile="$(shell_profile)"
+  if [[ -f "$profile" ]]; then
+    "$PYTHON" - "$profile" <<'PY'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+profile = Path(sys.argv[1])
+marker = "# AI First Learning App global orchestrator command"
+path_line = 'export PATH="$HOME/.local/bin:$PATH"'
+lines = profile.read_text(encoding="utf-8").splitlines()
+cleaned: list[str] = []
+i = 0
+while i < len(lines):
+    if lines[i] == marker and i + 1 < len(lines) and lines[i + 1] == path_line:
+        if cleaned and cleaned[-1] == "":
+            cleaned.pop()
+        i += 2
+        continue
+    cleaned.append(lines[i])
+    i += 1
+profile.write_text("\n".join(cleaned) + ("\n" if cleaned else ""), encoding="utf-8")
+PY
+  fi
+
+  rmdir "$GLOBAL_BIN_DIR" >/dev/null 2>&1 || true
+}
+
 write_launchd_plist() {
   mkdir -p "$LAUNCHD_DIR" "$LAUNCHD_LOG_DIR"
   chmod 700 "$LAUNCHD_DIR" "$LAUNCHD_LOG_DIR"
@@ -292,6 +332,23 @@ logs_launchd() {
   tail -n 100 -f "$LAUNCHD_STDOUT" "$LAUNCHD_STDERR"
 }
 
+uninstall_orchestrator() {
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v launchctl >/dev/null 2>&1; then
+    launchctl bootout "$LAUNCHD_TARGET" >/dev/null 2>&1 || true
+  fi
+  rm -f "$AUTOSTART_PLIST" "$LAUNCHD_PLIST"
+  remove_global_command
+
+  if ask_yes_no "Also remove local secrets, logs, state, and Python runtime (.local/ and .venv)?"; then
+    rm -rf "$LOCAL_DIR" "$VENV_DIR"
+    printf 'Orchestrator uninstalled and local runtime data removed.\n'
+  else
+    rm -rf "$LAUNCHD_DIR"
+    printf 'Orchestrator integration uninstalled. Local secrets/runtime were preserved.\n'
+  fi
+  printf 'The repository checkout and GitHub credentials themselves were not revoked or deleted remotely.\n'
+}
+
 if [[ $# -eq 0 ]]; then
   if launchd_enabled; then
     start_launchd
@@ -332,6 +389,12 @@ case "$1" in
     shift
     [[ $# -eq 0 ]] || fail "logs does not accept additional arguments"
     logs_launchd
+    exit 0
+    ;;
+  uninstall)
+    shift
+    [[ $# -eq 0 ]] || fail "uninstall does not accept additional arguments"
+    uninstall_orchestrator
     exit 0
     ;;
 esac
