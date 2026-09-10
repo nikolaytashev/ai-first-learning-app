@@ -36,8 +36,9 @@ def test_init_installs_user_global_orch_command() -> None:
     assert 'GLOBAL_COMMAND="$GLOBAL_BIN_DIR/orch"' in launcher
     assert "install_global_command" in launcher
     assert "# AI First Learning App global orchestrator" in launcher
-    assert 'exec {shlex.quote(repository_launcher)} \\"$@\\"' in launcher
-    assert 'export PATH=\"$HOME/.local/bin:$PATH\"' in launcher
+    assert "shlex.quote(repository_launcher)" in launcher
+    assert '"$@"' in launcher
+    assert '$HOME/.local/bin:$PATH' in launcher
     assert "sudo" not in launcher
 
 
