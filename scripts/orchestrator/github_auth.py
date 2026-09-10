@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import shutil
+import stat
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -160,15 +161,27 @@ class GitHubAppTokenProvider:
         return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
 
-def _outside_repository(path: Path, root: Path | None) -> Path:
+def _trusted_private_key_path(path: Path, root: Path | None) -> Path:
+    """Allow the PEM outside the repo or inside the explicitly ignored local secret directory."""
     resolved = path.expanduser().resolve()
-    if root is None:
-        return resolved
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError:
-        return resolved
-    raise ValueError("GitHub App private key must be stored outside the repository")
+    if root is not None:
+        repository_root = root.resolve()
+        try:
+            resolved.relative_to(repository_root)
+        except ValueError:
+            pass
+        else:
+            local_secret_root = repository_root / ".local"
+            try:
+                resolved.relative_to(local_secret_root)
+            except ValueError as exc:
+                raise ValueError(
+                    "GitHub App private key inside the repository must be stored under .local/"
+                ) from exc
+
+    if resolved.exists() and stat.S_IMODE(resolved.stat().st_mode) & 0o077:
+        raise ValueError("GitHub App private key permissions must not allow group/world access")
+    return resolved
 
 
 def load_github_token_provider(
@@ -189,7 +202,7 @@ def load_github_token_provider(
     key_path_raw = env.get("GITHUB_APP_PRIVATE_KEY_PATH", "")
     if not key_path_raw:
         raise ValueError("GITHUB_APP_PRIVATE_KEY_PATH is required for github_app")
-    private_key_path = _outside_repository(Path(key_path_raw), root)
+    private_key_path = _trusted_private_key_path(Path(key_path_raw), root)
 
     installation_raw = env.get("GITHUB_APP_INSTALLATION_ID", "")
     installation_id: int | None = None

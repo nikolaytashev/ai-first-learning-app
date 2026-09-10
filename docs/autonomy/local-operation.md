@@ -41,7 +41,7 @@ when it cannot prove them.
 
 A GitHub App is preferred for long-lived automation because installation can be repository-scoped
 and installation access tokens are short-lived. The trusted worker creates and refreshes those
-tokens automatically. Raw credentials must never be stored in the repository or forwarded to Codex.
+tokens automatically. Raw credentials must never be tracked by Git. Machine-local credentials may be stored only under the gitignored `.local/` directory with restrictive filesystem permissions and are never forwarded to Codex.
 
 The identity needs issue/comment/Project/sub-issue/dependency and draft-PR write permissions plus
 repository/rules read access. It must not have merge, release, deployment, secret, ruleset,
@@ -71,9 +71,9 @@ GITHUB_APP_INSTALLATION_ID
 ORCHESTRATOR_STATE_DIRECTORY
 ```
 
-For `github_app`, keep the PEM private key outside the repository with restrictive filesystem
-permissions. `GITHUB_APP_INSTALLATION_ID` is optional because the worker can discover the App
-installation from the configured repository.
+The canonical launcher stores the PEM at gitignored `.local/github-app.pem` with mode 600. `GITHUB_APP_INSTALLATION_ID` is optional because the worker can discover the App installation from the configured repository.
+
+For a user-owned Project, `./orch init` also stores `GITHUB_PROJECT_TOKEN` in gitignored `.local/orchestrator.env` with mode 600. The token must be a classic PAT with only the `project` scope.
 
 For legacy `restricted_bot`, `GITHUB_TOKEN` is secret and must be injected by an external secret
 provider/environment. Do not put it in `.env`, command-line arguments, prompts, logs or the
@@ -84,7 +84,16 @@ variables and private-key material.
 
 ## Local bootstrap
 
-Use Python 3.12 or later from a clean checkout of `main`:
+Use Python 3.12 or later from a clean checkout of `main`. The preferred one-time setup is:
+
+```bash
+./orch init
+```
+
+It securely prompts for the Project token and the existing GitHub App PEM path, copies secrets into
+`.local/`, fixes permissions and creates/updates `.venv`. The `.local/` directory is gitignored.
+
+Manual validation remains available:
 
 ```bash
 python -m venv .venv
@@ -104,7 +113,7 @@ Install/authenticate Codex CLI separately.
 Run:
 
 ```bash
-python scripts/run_orchestrator.py doctor
+./orch doctor
 ```
 
 `doctor` invokes no agent and mutates no GitHub state. It verifies:
@@ -124,8 +133,8 @@ Resolve every blocked preflight result before starting continuous work.
 ## Inspecting safety policy
 
 ```bash
-python scripts/run_orchestrator.py usage
-python scripts/run_orchestrator.py policy
+./orch usage
+./orch policy
 ```
 
 `usage` reads Codex account rate-limit state and applies configured reserve thresholds. `policy`
@@ -135,7 +144,7 @@ usage guard switches.
 ## One controlled pass
 
 ```bash
-python scripts/run_orchestrator.py iteration
+./orch iteration
 ```
 
 This performs one GitHub control-plane pass and, if cadence/usage/repository gates permit, at most
@@ -146,7 +155,7 @@ one bounded Task implementation pass. It is useful before enabling the persisten
 Start:
 
 ```bash
-python scripts/run_orchestrator.py run
+./orch run
 ```
 
 The process stays in the foreground until Ctrl-C. GitHub is polled every `control_plane.poll_seconds`
@@ -176,6 +185,9 @@ for autonomous publication.
 
 ## Restart and recovery behaviour
 
+After a machine restart, no exports or virtual-environment activation are needed. From the repository root, `./orch` starts the continuous worker and `./orch <command>` runs any local control command. The launcher reloads `.local/orchestrator.env`, supplies the App PEM path and refreshes locked Python dependencies when needed.
+
+
 GitHub is the durable product/control-plane source of truth. Managed issues contain hidden metadata
 for origin, hierarchy, revision, approval digest and execution state. Local `.orchestrator` SQLite
 state stores iteration/failure/notification counters and legacy proposal idempotency data.
@@ -186,6 +198,6 @@ Task to rework. Cancelled managed work is closed as not planned rather than dele
 
 ## Legacy proposal command
 
-`python scripts/run_orchestrator.py proposal` remains available for compatibility with the original
+`./orch proposal` remains available for compatibility with the original
 single-proposal bootstrap workflow. New product work should use the GitHub Epic/Feature Issue Forms
 and `/orch` command surface instead.

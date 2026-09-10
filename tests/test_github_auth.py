@@ -11,7 +11,7 @@ from scripts.orchestrator.config import load_config
 from scripts.orchestrator.github_auth import (
     GitHubAppTokenProvider,
     StaticGitHubTokenProvider,
-    _outside_repository,
+    _trusted_private_key_path,
 )
 from scripts.validate_repository import ROOT
 
@@ -75,10 +75,30 @@ def test_github_app_token_is_cached_and_refreshed_before_expiry(
     assert provider.mint_calls == 2
 
 
-def test_private_key_path_inside_repository_is_rejected(tmp_path: Path) -> None:
+def test_private_key_path_inside_repository_is_rejected_outside_local_dir(tmp_path: Path) -> None:
     key = tmp_path / "secrets" / "app.pem"
     key.parent.mkdir()
     key.write_text("test-only-placeholder", encoding="utf-8")
+    key.chmod(0o600)
 
-    with pytest.raises(ValueError, match="outside the repository"):
-        _outside_repository(key, tmp_path)
+    with pytest.raises(ValueError, match=r"stored under \.local"):
+        _trusted_private_key_path(key, tmp_path)
+
+
+def test_private_key_path_inside_local_dir_is_allowed(tmp_path: Path) -> None:
+    key = tmp_path / ".local" / "github-app.pem"
+    key.parent.mkdir()
+    key.write_text("test-only-placeholder", encoding="utf-8")
+    key.chmod(0o600)
+
+    assert _trusted_private_key_path(key, tmp_path) == key.resolve()
+
+
+def test_private_key_path_rejects_group_or_world_permissions(tmp_path: Path) -> None:
+    key = tmp_path / ".local" / "github-app.pem"
+    key.parent.mkdir()
+    key.write_text("test-only-placeholder", encoding="utf-8")
+    key.chmod(0o644)
+
+    with pytest.raises(ValueError, match="group/world"):
+        _trusted_private_key_path(key, tmp_path)

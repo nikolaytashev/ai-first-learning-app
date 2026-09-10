@@ -148,18 +148,20 @@ of the time-of-day cadence.
 
 ## Local orchestrator commands
 
-These commands are machine/bootstrap controls; product commands belong in GitHub comments.
+These commands are machine/bootstrap controls; product commands belong in GitHub comments. Run `./orch init` once on a machine. After that the launcher restores local secrets, activates the virtual environment and installs updated locked dependencies automatically after restarts.
+
+Running `./orch` with no arguments starts the continuous worker.
 
 | Local command | Purpose |
 | --- | --- |
-| `python scripts/run_orchestrator.py doctor` | Fail-closed verification of local checkout, Codex, GitHub identity, Project fields and `main` ruleset. No agent execution or GitHub mutation. |
-| `python -m scripts.run_orchestrator project-bootstrap` | Idempotently create missing Project custom fields and add missing single-select options from `config/github.yaml`. Existing fields/options are preserved; type mismatches fail closed. |
-| `python scripts/run_orchestrator.py usage` | Inspect the current Codex usage-reserve decision. |
-| `python scripts/run_orchestrator.py policy` | Print resolved cadence, control-plane, implementation and usage policy. |
-| `python scripts/run_orchestrator.py iteration` | Run one GitHub control-plane pass and, when cadence/safety gates permit, at most one bounded Task implementation pass. |
-| `python scripts/run_orchestrator.py run` | Start the foreground continuous worker. After this starts, normal commands and assignments are given in GitHub. Stop with Ctrl-C. |
-| `python scripts/run_orchestrator.py resume` | Clear a local consecutive-failure stop after the underlying problem has been addressed. This is distinct from `/orch resume` on a GitHub work item. |
-| `python scripts/run_orchestrator.py proposal` | Legacy autonomous proposal generator retained for compatibility. New product work should use the GitHub Epic/Feature issue forms instead. |
+| `./orch doctor` | Fail-closed verification of local checkout, Codex, GitHub identity, Project fields and `main` ruleset. No agent execution or GitHub mutation. |
+| `./orch project-bootstrap` | Idempotently create missing Project custom fields and add missing single-select options from `config/github.yaml`. Existing fields/options are preserved; type mismatches fail closed. |
+| `./orch usage` | Inspect the current Codex usage-reserve decision. |
+| `./orch policy` | Print resolved cadence, control-plane, implementation and usage policy. |
+| `./orch iteration` | Run one GitHub control-plane pass and, when cadence/safety gates permit, at most one bounded Task implementation pass. |
+| `./orch run` | Start the foreground continuous worker. After this starts, normal commands and assignments are given in GitHub. Stop with Ctrl-C. |
+| `./orch resume` | Clear a local consecutive-failure stop after the underlying problem has been addressed. This is distinct from `/orch resume` on a GitHub work item. |
+| `./orch proposal` | Legacy autonomous proposal generator retained for compatibility. New product work should use the GitHub Epic/Feature issue forms instead. |
 
 ## Repository status
 
@@ -198,16 +200,15 @@ local Markdown links, issue forms and required repository files.
 ## Bootstrap sequence
 
 1. Configure the GitHub Project number and URL.
-2. Run `python -m scripts.run_orchestrator project-bootstrap` to reconcile the Project custom fields/options from `config/github.yaml`.
+2. Run `./orch project-bootstrap` to reconcile the Project custom fields/options from `config/github.yaml`.
 3. Create/install the repository-scoped GitHub App using `docs/autonomy/github-app-setup.md`.
 4. Keep the active no-bypass `Protect main` ruleset with PR requirement, conversation resolution,
    deletion/force-push protection and required `repository-validation` check.
 5. Install and authenticate Codex CLI on the local machine.
-6. Keep the GitHub App private key outside the repository and set only
-   `GITHUB_APP_PRIVATE_KEY_PATH`; the non-secret Client ID is checked into `config/github.yaml`.
-7. Run `python scripts/run_orchestrator.py doctor` until it reports `ready`.
-8. Optionally run `python scripts/run_orchestrator.py iteration` for one controlled pass.
-9. Start `python scripts/run_orchestrator.py run` for continuous GitHub-controlled operation.
+6. Run `./orch init` once. It copies the App PEM to gitignored `.local/github-app.pem`, stores the Project token in `.local/orchestrator.env`, applies restrictive filesystem permissions, and prepares `.venv`.
+7. Run `./orch doctor` until it reports `ready`.
+8. Optionally run `./orch iteration` for one controlled pass.
+9. Start `./orch run` for continuous GitHub-controlled operation.
 10. From then on, create Epic/Feature Issues and use their comments plus `/orch` commands to direct
     product work.
 
@@ -215,7 +216,5 @@ local Markdown links, issue forms and required repository files.
 
 The repository GitHub App remains the automation identity for repository, Issue, PR and Git
 operations. GitHub currently does not allow an installation token to mutate a user-owned
-Project V2. For `/users/.../projects/...`, inject `GITHUB_PROJECT_TOKEN` as a personal access
-token (classic) with only the `project` scope. Do not grant `repo` scope and do not commit the
-token. Organization-owned Projects continue to use the GitHub App token.
+Project V2. For `/users/.../projects/...`, `./orch init` stores a personal access token (classic) with only the `project` scope in gitignored `.local/orchestrator.env`. Do not grant `repo` scope. Organization-owned Projects continue to use the GitHub App token.
 

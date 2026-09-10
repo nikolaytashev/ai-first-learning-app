@@ -17,6 +17,9 @@ __pycache__/
 # Local orchestrator state, databases and audit logs
 .orchestrator/
 
+# Local orchestrator credentials and machine-specific runtime configuration
+.local/
+
 # Secrets and environment files
 .env
 .env.*
