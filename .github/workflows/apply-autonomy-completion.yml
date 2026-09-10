@@ -1,6 +1,9 @@
 name: Apply autonomy completion patch
 
 on:
+  push:
+    branches:
+      - feature/autonomy-completion-p0
   pull_request:
     branches:
       - main
@@ -10,7 +13,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'feature/autonomy-completion-p0'
+    if: github.ref_name == 'feature/autonomy-completion-p0' || github.head_ref == 'feature/autonomy-completion-p0'
     runs-on: ubuntu-latest
     steps:
       - name: Check out branch
