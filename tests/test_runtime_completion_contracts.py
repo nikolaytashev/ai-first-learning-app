@@ -11,6 +11,8 @@ def test_specialist_schema_and_backlog_runtime_exist() -> None:
     state = (ROOT / "scripts/orchestrator/state.py").read_text(encoding="utf-8")
     assert "has_active_managed_backlog" in backlog
     assert "ProposalWorkflow" in backlog
+    assert "completed_features" in backlog
+    assert "supplemental_context=delivered_context" in backlog
     assert "state.mark_completed(waiting.workflow_id)" in backlog
     assert "def mark_completed(" in state
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts.orchestrator.codex import AgentRunner
@@ -35,6 +36,33 @@ def generate_next_feature_if_empty(
     """Create at most one human-gated Feature proposal when no managed backlog exists."""
     if has_active_managed_backlog(github):
         return {"status": "not_needed"}
+    completed_features: list[dict[str, object]] = []
+    for issue in github.list_issues(state="closed"):
+        metadata = parse_metadata(issue.body)
+        if (
+            metadata is None
+            or metadata.get("managed") is not True
+            or metadata.get("type") != "Feature"
+            or issue.state_reason != "completed"
+        ):
+            continue
+        completed_features.append(
+            {
+                "number": issue.number,
+                "title": issue.title,
+                "completed_specification": issue.body[-6000:],
+            }
+        )
+    completed_features = completed_features[-30:]
+    delivered_context = json.dumps(
+        {
+            "purpose": "Avoid proposing product scope that has already been delivered.",
+            "completed_features": completed_features,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
     state = StateStore(config.runtime.state_directory / "backlog")
     waiting = state.latest_waiting()
     if waiting is not None:
@@ -48,4 +76,11 @@ def generate_next_feature_if_empty(
                     "issue_url": issue.url,
                 }
         state.mark_completed(waiting.workflow_id)
-    return ProposalWorkflow(root=root, config=config, state=state, agent=agent, github=github).run()
+    return ProposalWorkflow(
+        root=root,
+        config=config,
+        state=state,
+        agent=agent,
+        github=github,
+        supplemental_context=delivered_context,
+    ).run()
