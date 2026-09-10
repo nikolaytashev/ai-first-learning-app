@@ -51,7 +51,7 @@ class _UnavailableAgent(AgentRunner):
 
 
 def _command_key(command: OrchestratorCommand) -> str:
-    payload = f"{command.comment_id}\0{command.name}\0{command.argument}".encode("utf-8")
+    payload = f"{command.comment_id}\0{command.name}\0{command.argument}".encode()
     return hashlib.sha256(payload).hexdigest()
 
 
