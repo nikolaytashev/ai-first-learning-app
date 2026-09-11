@@ -1,0 +1,127 @@
+name: Application CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: application-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: Detect application components
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.components.outputs.backend }}
+      mobile: ${{ steps.components.outputs.mobile }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Detect application components
+        id: components
+        shell: bash
+        run: |
+          if [[ -d backend ]] && find backend \( -name '*.sln' -o -name '*.csproj' \) -print -quit | grep -q .; then
+            echo 'backend=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'backend=false' >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -f mobile/pubspec.yaml ]]; then
+            echo 'mobile=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'mobile=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  backend:
+    name: Backend build and tests
+    needs: discover
+    if: needs.discover.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Verify formatting
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release
+
+  mobile:
+    name: Mobile build checks and tests
+    needs: discover
+    if: needs.discover.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve packages
+        run: flutter pub get
+
+      - name: Verify Dart formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  application-ci:
+    name: application-ci
+    if: always()
+    needs:
+      - discover
+      - backend
+      - mobile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce application checks
+        shell: bash
+        env:
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          BACKEND_EXPECTED: ${{ needs.discover.outputs.backend }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          MOBILE_EXPECTED: ${{ needs.discover.outputs.mobile }}
+          MOBILE_RESULT: ${{ needs.mobile.result }}
+        run: |
+          [[ "$DISCOVER_RESULT" == 'success' ]] || exit 1
+          if [[ "$BACKEND_EXPECTED" == 'true' ]]; then
+            [[ "$BACKEND_RESULT" == 'success' ]] || exit 1
+          fi
+          if [[ "$MOBILE_EXPECTED" == 'true' ]]; then
+            [[ "$MOBILE_RESULT" == 'success' ]] || exit 1
+          fi
+          echo 'Application CI passed.'

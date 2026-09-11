@@ -30,9 +30,10 @@ profiles:
       - "mobile/pubspec.yaml"
       - "mobile/pubspec.lock"
     commands:
+      - flutter --directory mobile pub get
       - dart format --output=none --set-exit-if-changed mobile
-      - flutter analyze
-      - flutter test
+      - flutter --directory mobile analyze
+      - flutter --directory mobile test
 
   dotnet:
     path_patterns:
@@ -40,9 +41,10 @@ profiles:
       - "backend/**/*.csproj"
       - "backend/**/*.sln"
     commands:
-      - dotnet format backend --verify-no-changes
-      - dotnet build backend --no-restore
-      - dotnet test backend --no-build
+      - dotnet restore backend
+      - dotnet format backend --verify-no-changes --no-restore
+      - dotnet build backend --no-restore --configuration Release
+      - dotnet test backend --no-build --configuration Release
 
   documentation:
     path_patterns:
