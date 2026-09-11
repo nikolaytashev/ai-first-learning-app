@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from scripts.orchestrator.codex import AgentRunner
@@ -11,6 +12,27 @@ from scripts.orchestrator.github import GitHubClient
 from scripts.orchestrator.model import JsonObject, OrchestratorConfig
 from scripts.orchestrator.proposal import ProposalWorkflow
 from scripts.orchestrator.state import StateStore
+
+
+def _section(body: str, heading: str, *, limit: int = 500) -> str:
+    """Extract a bounded Markdown section for compact delivered-feature history."""
+    pattern = rf"(?ms)^## {re.escape(heading)}\s*$\n(.*?)(?=^## |\Z)"
+    match = re.search(pattern, body)
+    if match is None:
+        return ""
+    value = " ".join(match.group(1).strip().split())
+    return value[:limit]
+
+
+def _completed_feature_context(issue_number: int, title: str, body: str) -> dict[str, object]:
+    """Return only delivered product facts needed for duplicate-scope checks."""
+    return {
+        "number": issue_number,
+        "title": title,
+        "problem": _section(body, "Problem"),
+        "desired_outcome": _section(body, "Desired outcome"),
+        "scope_in": _section(body, "Scope in", limit=800),
+    }
 
 
 def has_active_managed_backlog(github: GitHubClient) -> bool:
@@ -47,14 +69,8 @@ def generate_next_feature_if_empty(
             or issue.state_reason != "completed"
         ):
             continue
-        completed_features.append(
-            {
-                "number": issue.number,
-                "title": issue.title,
-                "completed_specification": issue.body[-6000:],
-            }
-        )
-    completed_features = completed_features[-30:]
+        completed_features.append(_completed_feature_context(issue.number, issue.title, issue.body))
+    completed_features = completed_features[-20:]
     delivered_context = json.dumps(
         {
             "purpose": "Avoid proposing product scope that has already been delivered.",

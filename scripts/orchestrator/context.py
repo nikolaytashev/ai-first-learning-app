@@ -60,6 +60,25 @@ def select_context_documents(root: Path, role: str, task_types: Sequence[str]) -
     return selected
 
 
-def render_context(documents: Sequence[JsonObject]) -> str:
-    """Serialize context as inert JSON data rather than executable instructions."""
-    return json.dumps(list(documents), ensure_ascii=False, indent=2, sort_keys=True)
+def render_context(
+    documents: Sequence[JsonObject],
+    *,
+    reference_only_authorities: frozenset[str] = frozenset(),
+    inline_paths: frozenset[str] = frozenset(),
+) -> str:
+    """Serialize context as inert JSON, optionally keeping policy docs reference-only."""
+    rendered: list[JsonObject] = []
+    for document in documents:
+        entry = dict(document)
+        path_value = entry.get("path")
+        authority_value = entry.get("authority")
+        if (
+            isinstance(path_value, str)
+            and isinstance(authority_value, str)
+            and authority_value in reference_only_authorities
+            and path_value not in inline_paths
+        ):
+            entry.pop("content", None)
+            entry["reference_only"] = True
+        rendered.append(entry)
+    return json.dumps(rendered, ensure_ascii=False, indent=2, sort_keys=True)
