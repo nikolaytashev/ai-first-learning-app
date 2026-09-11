@@ -198,6 +198,10 @@ class StateStore:
         """Stop a workflow without publishing side effects."""
         self._set_status(workflow_id, "blocked")
 
+    def mark_completed(self, workflow_id: str) -> None:
+        """Retire a published proposal after its managed Feature has completed or closed."""
+        self._set_status(workflow_id, "completed")
+
     def mark_waiting(self, workflow_id: str, issue_number: int, issue_url: str) -> None:
         """Persist the human gate after all GitHub side effects have completed."""
         with self._connect() as connection:

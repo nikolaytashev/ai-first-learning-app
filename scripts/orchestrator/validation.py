@@ -135,9 +135,10 @@ def run_validation(
     changed_files: list[str],
     *,
     policy_root: Path | None = None,
+    enforce_guardrails: bool = True,
 ) -> ValidationRun:
-    """Execute trusted validation policy in the untrusted candidate worktree."""
-    violations = protected_path_violations(changed_files)
+    """Execute trusted validation policy in the candidate or trusted integration worktree."""
+    violations = protected_path_violations(changed_files) if enforce_guardrails else []
     if violations:
         return ValidationRun(
             "failed",
