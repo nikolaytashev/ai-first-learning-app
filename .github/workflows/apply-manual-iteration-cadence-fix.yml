@@ -72,6 +72,10 @@ jobs:
         run: rm .github/workflows/apply-manual-iteration-cadence-fix.yml
       - name: Install validation dependencies
         run: python -m pip install -r requirements-dev.lock
+      - name: Format production changes
+        run: |
+          ruff check --fix scripts/run_orchestrator.py tests/test_runtime_policy.py
+          ruff format scripts/run_orchestrator.py tests/test_runtime_policy.py
       - name: Validate
         run: |
           python scripts/validate_repository.py
