@@ -66,8 +66,16 @@ class HardenedControlPlaneWorkflow(ControlPlaneWorkflow):
         settings: ControlPlaneSettings,
         agent: AgentRunner,
         github: GitHubClient,
+        application_root: Path | None = None,
     ) -> None:
-        super().__init__(root=root, config=config, settings=settings, agent=agent, github=github)
+        super().__init__(
+            root=root,
+            config=config,
+            settings=settings,
+            agent=agent,
+            github=github,
+            application_root=application_root,
+        )
         self._safety_registry_path = config.runtime.state_directory / _REGISTRY_NAME
 
     def _load_safety_registry(self) -> set[str]:
@@ -166,7 +174,9 @@ class HardenedControlPlaneWorkflow(ControlPlaneWorkflow):
             issue, metadata = self._approve(issue, metadata)
 
         force_analysis = any(command.name in {"analyze", "replan"} for command in commands)
-        force_replan = any(command.name == "replan" for command in commands)
+        agent_replan_requests = metadata.get("agent_replan_requests")
+        has_agent_replan = isinstance(agent_replan_requests, list) and bool(agent_replan_requests)
+        force_replan = any(command.name == "replan" for command in commands) or has_agent_replan
         normal_feedback = any(
             not _is_command_only(comment.body, self._config.authorization.command_prefix)
             for comment in comments
@@ -175,6 +185,7 @@ class HardenedControlPlaneWorkflow(ControlPlaneWorkflow):
         should_analyze = metadata.get("paused") is not True and (
             initial
             or force_analysis
+            or has_agent_replan
             or (self._settings.auto_reconcile_human_comments and normal_feedback)
         )
         reconciled = False

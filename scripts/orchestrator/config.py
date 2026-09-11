@@ -254,6 +254,13 @@ def select_model(
     *,
     size: str | None = None,
     risk: str | None = None,
+    ambiguity: str | None = None,
+    architecture_change: bool = False,
+    security_sensitive: bool = False,
+    destructive_migration: bool = False,
+    data_loss_risk: bool = False,
+    concurrency_sensitive: bool = False,
+    previous_failures: int = 0,
 ) -> ModelSelection:
     """Select the lowest approved profile, escalating only after repeated failure."""
     defaults = _mapping(config.model_profiles.get("role_defaults"), "role_defaults")
@@ -294,10 +301,35 @@ def select_model(
     allowed = cast(list[str], allowed_raw)
     if profile_name not in allowed:
         raise ValueError(f"profile {profile_name!r} is not allowed for role {role!r}")
+
+    capability_order = ("text_light", "code_light", "balanced", "deep", "critical")
+
+    def upgrade_one(current: str) -> str:
+        index = allowed.index(current)
+        return allowed[index + 1] if index + 1 < len(allowed) else current
+
+    def minimum_profile(current: str, minimum: str) -> str:
+        minimum_rank = capability_order.index(minimum)
+        current_rank = capability_order.index(current)
+        if current_rank >= minimum_rank:
+            return current
+        eligible = [
+            candidate for candidate in allowed if capability_order.index(candidate) >= minimum_rank
+        ]
+        return eligible[0] if eligible else allowed[-1]
+
+    if ambiguity == "high":
+        profile_name = upgrade_one(profile_name)
+    if architecture_change:
+        profile_name = minimum_profile(profile_name, "balanced")
+    if security_sensitive:
+        profile_name = minimum_profile(profile_name, "deep")
+    if destructive_migration or data_loss_risk or concurrency_sensitive:
+        profile_name = minimum_profile(profile_name, "critical")
+    if previous_failures >= 2:
+        profile_name = upgrade_one(profile_name)
     if attempt >= 3:
-        current_index = allowed.index(profile_name)
-        if current_index + 1 < len(allowed):
-            profile_name = allowed[current_index + 1]
+        profile_name = upgrade_one(profile_name)
 
     profile = _mapping(profiles.get(profile_name), f"profiles.{profile_name}")
     return ModelSelection(

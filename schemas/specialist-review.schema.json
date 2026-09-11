@@ -1,18 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/implementation-result.schema.json",
-  "title": "Implementation Result",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/specialist-review.schema.json",
+  "title": "Specialist Task Review",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "workflow_id",
     "issue_number",
-    "status",
+    "role",
+    "verdict",
     "summary",
-    "changed_files",
-    "tests_to_run",
-    "blocker",
+    "implementation_requirements",
+    "decisions_required",
     "provenance",
     "replan_request"
   ],
@@ -28,9 +28,17 @@
       "type": "integer",
       "minimum": 1
     },
-    "status": {
+    "role": {
       "enum": [
-        "completed",
+        "software_architect",
+        "instructional_designer"
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "passed",
+        "changes_required",
+        "decision_required",
         "blocked",
         "replan_required"
       ]
@@ -39,26 +47,19 @@
       "type": "string",
       "minLength": 3
     },
-    "changed_files": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "tests_to_run": {
+    "implementation_requirements": {
       "type": "array",
       "items": {
         "type": "string",
-        "minLength": 1
+        "minLength": 3
       }
     },
-    "blocker": {
-      "type": [
-        "string",
-        "null"
-      ]
+    "decisions_required": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
     },
     "provenance": {
       "type": "object",
@@ -70,7 +71,10 @@
       ],
       "properties": {
         "role": {
-          "const": "implementer"
+          "enum": [
+            "software_architect",
+            "instructional_designer"
+          ]
         },
         "agent_version": {
           "type": "string",
@@ -121,16 +125,15 @@
     {
       "if": {
         "properties": {
-          "status": {
-            "const": "blocked"
+          "verdict": {
+            "const": "decision_required"
           }
         }
       },
       "then": {
         "properties": {
-          "blocker": {
-            "type": "string",
-            "minLength": 3
+          "decisions_required": {
+            "minItems": 1
           }
         }
       }
@@ -138,7 +141,7 @@
     {
       "if": {
         "properties": {
-          "status": {
+          "verdict": {
             "const": "replan_required"
           }
         }

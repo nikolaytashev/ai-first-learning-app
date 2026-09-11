@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from scripts.orchestrator.application_snapshot import latest_application_snapshot
+from scripts.orchestrator.backlog import generate_next_feature_if_empty
 from scripts.orchestrator.codex import CodexCliRunner
 from scripts.orchestrator.config import load_config
 from scripts.orchestrator.github import GitHubClient
@@ -332,23 +334,30 @@ def _iteration() -> tuple[int, dict[str, object]]:
             }
 
         budget = IterationBudget(settings.budget)
-        planning_agent = BudgetedAgentRunner(
-            CodexCliRunner(
+        with latest_application_snapshot(
+            ROOT,
+            config.runtime.state_directory,
+            config.repository.default_branch,
+            purpose="control-plane",
+        ) as planning_snapshot:
+            planning_agent = BudgetedAgentRunner(
+                CodexCliRunner(
+                    root=planning_snapshot.path,
+                    executable=config.runtime.codex_executable,
+                    sandbox=config.runtime.codex_sandbox,
+                    web_search=config.runtime.codex_web_search,
+                ),
+                budget,
+            )
+            control = HardenedControlPlaneWorkflow(
                 root=ROOT,
-                executable=config.runtime.codex_executable,
-                sandbox=config.runtime.codex_sandbox,
-                web_search=config.runtime.codex_web_search,
-            ),
-            budget,
-        )
-        control = HardenedControlPlaneWorkflow(
-            root=ROOT,
-            config=config,
-            settings=control_settings,
-            agent=planning_agent,
-            github=github,
-        )
-        control_result = control.run_iteration()
+                application_root=planning_snapshot.path,
+                config=config,
+                settings=control_settings,
+                agent=planning_agent,
+                github=github,
+            )
+            control_result = control.run_iteration()
 
         repository_health = RepositoryHealthChecker(
             config,
@@ -396,8 +405,37 @@ def _iteration() -> tuple[int, dict[str, object]]:
                 implementation.run_one_ready_task(),
             )
 
+        backlog_result: dict[str, object] = {"status": "not_checked"}
+        if implementation_result.get("status") == "idle" and control_result.ready_tasks == 0:
+            with latest_application_snapshot(
+                ROOT,
+                config.runtime.state_directory,
+                config.repository.default_branch,
+                purpose="backlog",
+            ) as backlog_snapshot:
+                backlog_agent = BudgetedAgentRunner(
+                    CodexCliRunner(
+                        root=backlog_snapshot.path,
+                        executable=config.runtime.codex_executable,
+                        sandbox=config.runtime.codex_sandbox,
+                        web_search=config.runtime.codex_web_search,
+                    ),
+                    budget,
+                )
+                backlog_result = cast(
+                    dict[str, object],
+                    generate_next_feature_if_empty(
+                        root=ROOT,
+                        context_root=backlog_snapshot.path,
+                        config=config,
+                        github=github,
+                        agent=backlog_agent,
+                    ),
+                )
+
         pr_outcomes_reconciled = implementation_result.get("pr_outcomes_reconciled", 0)
         feature_checks = implementation_result.get("feature_checks", 0)
+        interrupted_tasks_recovered = implementation_result.get("interrupted_tasks_recovered", 0)
         worked = (
             safety_control.commands > 0
             or control_result.reconciled > 0
@@ -405,6 +443,8 @@ def _iteration() -> tuple[int, dict[str, object]]:
             or implementation_result.get("status") not in {"idle", "skipped_schedule"}
             or (isinstance(pr_outcomes_reconciled, int) and pr_outcomes_reconciled > 0)
             or (isinstance(feature_checks, int) and feature_checks > 0)
+            or (isinstance(interrupted_tasks_recovered, int) and interrupted_tasks_recovered > 0)
+            or backlog_result.get("status") not in {"not_checked", "not_needed", "closed_waiting"}
         )
         if worked:
             local_date = local_now(settings, now_utc).date().isoformat()
@@ -421,6 +461,7 @@ def _iteration() -> tuple[int, dict[str, object]]:
             "safety_control": safety_control.as_dict(),
             "control_plane": control_result.as_dict(),
             "implementation": implementation_result,
+            "backlog": backlog_result,
             "iteration_budget": budget.as_dict(),
             "current_interval_minutes": schedule_interval_minutes(settings, now_utc=now_utc),
         }
