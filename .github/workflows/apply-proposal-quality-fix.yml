@@ -1,0 +1,112 @@
+name: Apply proposal quality fix
+
+on:
+  push:
+    branches:
+      - fix/proposal-context-and-ba-quality
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/proposal-context-and-ba-quality
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Apply code changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/orchestrator/context.py')
+          text = path.read_text()
+          old = '''def render_context(documents: Sequence[JsonObject]) -> str:\n    \"\"\"Serialize context as inert JSON data rather than executable instructions.\"\"\"\n    return json.dumps(list(documents), ensure_ascii=False, indent=2, sort_keys=True)\n'''
+          new = '''def render_context(\n    documents: Sequence[JsonObject],\n    *,\n    reference_only_authorities: frozenset[str] = frozenset(),\n    inline_paths: frozenset[str] = frozenset(),\n) -> str:\n    \"\"\"Serialize context as inert JSON, optionally keeping policy docs reference-only.\"\"\"\n    rendered: list[JsonObject] = []\n    for document in documents:\n        entry = dict(document)\n        path_value = entry.get(\"path\")\n        authority_value = entry.get(\"authority\")\n        if (\n            isinstance(path_value, str)\n            and isinstance(authority_value, str)\n            and authority_value in reference_only_authorities\n            and path_value not in inline_paths\n        ):\n            entry.pop(\"content\", None)\n            entry[\"reference_only\"] = True\n        rendered.append(cast(JsonObject, entry))\n    return json.dumps(rendered, ensure_ascii=False, indent=2, sort_keys=True)\n'''
+          if old not in text:
+              raise SystemExit('context render anchor not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('scripts/orchestrator/backlog.py')
+          text = path.read_text()
+          text = text.replace('import json\nfrom pathlib import Path\n', 'import json\nimport re\nfrom pathlib import Path\n', 1)
+          anchor = '''def has_active_managed_backlog(github: GitHubClient) -> bool:\n'''
+          helpers = '''def _section(body: str, heading: str, *, limit: int = 500) -> str:\n    \"\"\"Extract a bounded Markdown section for compact delivered-feature history.\"\"\"\n    pattern = rf\"(?ms)^## {re.escape(heading)}\\s*$\\n(.*?)(?=^## |\\Z)\"\n    match = re.search(pattern, body)\n    if match is None:\n        return \"\"\n    value = \" \".join(match.group(1).strip().split())\n    return value[:limit]\n\n\ndef _completed_feature_context(issue_number: int, title: str, body: str) -> dict[str, object]:\n    \"\"\"Return only delivered product facts needed for duplicate-scope checks.\"\"\"\n    return {\n        \"number\": issue_number,\n        \"title\": title,\n        \"problem\": _section(body, \"Problem\"),\n        \"desired_outcome\": _section(body, \"Desired outcome\"),\n        \"scope_in\": _section(body, \"Scope in\", limit=800),\n    }\n\n\n'''
+          if anchor not in text:
+              raise SystemExit('backlog helper anchor not found')
+          text = text.replace(anchor, helpers + anchor, 1)
+          old = '''        completed_features.append(\n            {\n                \"number\": issue.number,\n                \"title\": issue.title,\n                \"completed_specification\": issue.body[-6000:],\n            }\n        )\n    completed_features = completed_features[-30:]\n'''
+          new = '''        completed_features.append(\n            _completed_feature_context(issue.number, issue.title, issue.body)\n        )\n    completed_features = completed_features[-20:]\n'''
+          if old not in text:
+              raise SystemExit('backlog completed feature anchor not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('scripts/orchestrator/proposal.py')
+          text = path.read_text()
+          import_anchor = 'from scripts.orchestrator.state import StateStore, WorkflowState\n\n\n'
+          constants = '''_REFERENCE_ONLY_AUTHORITIES = frozenset({\"repository_policy\"})\n_INLINE_POLICY_PATHS = frozenset({\"docs/product/human-decisions.md\"})\n\n\n'''
+          if import_anchor not in text:
+              raise SystemExit('proposal import anchor not found')
+          text = text.replace(import_anchor, import_anchor + constants, 1)
+
+          old = '''        pm_context = render_context(\n            select_context_documents(\n                self._context_root,\n                \"product_manager\",\n                [\"bootstrap\", \"proposal_generation\", \"discovery\", \"planning\"],\n            )\n        )\n'''
+          new = '''        pm_context = render_context(\n            select_context_documents(\n                self._context_root,\n                \"product_manager\",\n                [\"proposal_generation\", \"discovery\"],\n            ),\n            reference_only_authorities=_REFERENCE_ONLY_AUTHORITIES,\n            inline_paths=_INLINE_POLICY_PATHS,\n        )\n'''
+          if old not in text:
+              raise SystemExit('pm context anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        ba_context = render_context(\n            select_context_documents(\n                self._context_root,\n                \"business_analysis\",\n                [\"proposal_generation\", \"acceptance_criteria\", \"requirements\", \"planning\"],\n            )\n        )\n'''
+          new = '''        ba_context = render_context(\n            select_context_documents(\n                self._context_root,\n                \"business_analysis\",\n                [\"proposal_generation\", \"acceptance_criteria\", \"requirements\"],\n            ),\n            reference_only_authorities=_REFERENCE_ONLY_AUTHORITIES,\n            inline_paths=_INLINE_POLICY_PATHS,\n        )\n'''
+          if old not in text:
+              raise SystemExit('ba context anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''Create one bounded feature proposal suitable for the initial product. If authoritative context\ncontains an unresolved human decision that affects the proposal, preserve it in\n`decisions_required` and use status `needs_decision`; do not invent the decision.\nRevision feedback from Business Analysis: {feedback}\n\nCanonical context data:\n'''
+          new = '''Create exactly one independently valuable user outcome, not a bundle of multiple releasable\nflows. Prefer the smallest feature that can be reviewed and later decomposed safely. If\nauthoritative context contains an unresolved human decision that affects the proposal, preserve\nit in `decisions_required` and use status `needs_decision`; do not invent the decision. A size S\nproposal should normally represent one coherent user flow and must not hide separate onboarding,\nnavigation, reader, persistence, privacy, or measurement capabilities inside one feature.\nDo not claim verification against an \"approved specification\", matrix, policy, or similar artifact\nunless it exists in canonical context; otherwise name the missing human decision explicitly.\nRepository-policy entries marked `reference_only` remain binding and may be read from their paths\nwhen needed.\nRevision feedback from Business Analysis: {feedback}\n\nCanonical context data:\n'''
+          if old not in text:
+              raise SystemExit('pm prompt anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''Use verdict `accepted` only when the proposal is not a duplicate, is appropriately bounded, and\nevery acceptance criterion is testable. Unresolved human decisions may remain listed without\nblocking publication when the proposal explicitly marks them as decisions required.\n\nProduct Manager proposal:\n'''
+          new = '''Use verdict `accepted` only when the proposal is not a duplicate, the declared size matches the\nactual scope, and every acceptance criterion is testable. Treat sizing strictly:\n- XS/S: one coherent independently releasable user outcome; S must not bundle multiple product flows.\n- M/L: broader coherent outcomes with correspondingly larger implementation/decomposition scope.\n- If the scope contains multiple independently releasable outcomes, use `revision_required` and\n  `size_assessment.status = split_required`.\n- If the scope is coherent but the declared size is wrong, use `revision_required`, keep\n  `size_assessment.status = appropriate`, and set `suggested_size` to the correct size.\n\nUnresolved human decisions may remain for human approval only when they are explicit bounded\nprerequisites. A listed decision is not permission to treat undefined behaviour as testable. If an\nacceptance criterion relies on an undefined \"approved specification\", device matrix, policy,\nconsent model, persistence model, or similar prerequisite, mark it `not_testable` and require the\nproposal to identify that prerequisite explicitly or narrow the criterion. Missing decisions that\nmaterially change user flow, persistence, privacy, security, or measurement must be surfaced.\nRepository-policy entries marked `reference_only` remain binding and may be read from their paths\nwhen needed.\n\nFor verdict `accepted`, `size_assessment.suggested_size` must equal the proposal's declared size,\nand the review's `decisions_required` must preserve every unresolved decision from the proposal.\n\nProduct Manager proposal:\n'''
+          if old not in text:
+              raise SystemExit('ba prompt anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        if (\n            output.get(\"workflow_id\") != workflow_id\n            or output.get(\"proposal_id\") != proposal_id\n            or output.get(\"proposal_version\") != proposal_version\n            or not isinstance(provenance, dict)\n            or provenance.get(\"role\") != \"business_analysis\"\n        ):\n            raise RuntimeError(\"Business Analysis output failed deterministic identity checks\")\n        return output, attempts\n'''
+          new = '''        if (\n            output.get(\"workflow_id\") != workflow_id\n            or output.get(\"proposal_id\") != proposal_id\n            or output.get(\"proposal_version\") != proposal_version\n            or not isinstance(provenance, dict)\n            or provenance.get(\"role\") != \"business_analysis\"\n        ):\n            raise RuntimeError(\"Business Analysis output failed deterministic identity checks\")\n        return self._apply_ba_acceptance_policy(proposal, output), attempts\n\n    @staticmethod\n    def _apply_ba_acceptance_policy(proposal: JsonObject, review: JsonObject) -> JsonObject:\n        \"\"\"Preserve human decisions and downgrade contradictory accepted size reviews.\"\"\"\n        normalized = dict(review)\n        proposal_decisions = proposal.get(\"decisions_required\")\n        review_decisions = normalized.get(\"decisions_required\")\n        if isinstance(proposal_decisions, list) and isinstance(review_decisions, list):\n            decisions = [str(item) for item in review_decisions]\n            for decision in proposal_decisions:\n                value = str(decision)\n                if value not in decisions:\n                    decisions.append(value)\n            normalized[\"decisions_required\"] = decisions\n\n        if normalized.get(\"verdict\") == \"accepted\":\n            size_assessment = normalized.get(\"size_assessment\")\n            if (\n                isinstance(size_assessment, dict)\n                and size_assessment.get(\"suggested_size\") != proposal.get(\"size\")\n            ):\n                normalized[\"verdict\"] = \"revision_required\"\n                revisions = normalized.get(\"required_revisions\")\n                required = [str(item) for item in revisions] if isinstance(revisions, list) else []\n                required.append(\n                    \"Align the proposal's declared size with the Business Analysis size assessment.\"\n                )\n                normalized[\"required_revisions\"] = required\n        return cast(JsonObject, normalized)\n'''
+          if old not in text:
+              raise SystemExit('ba policy anchor not found')
+          path.write_text(text.replace(old, new, 1))
+
+          Path('tests/test_proposal_quality.py').write_text('''\"\"\"Regression tests for proposal context cost and BA acceptance quality.\"\"\"\n\nfrom __future__ import annotations\n\nimport json\nfrom pathlib import Path\n\nfrom scripts.orchestrator.backlog import _completed_feature_context\nfrom scripts.orchestrator.context import render_context, select_context_documents\nfrom scripts.orchestrator.proposal import (\n    ProposalWorkflow,\n    _INLINE_POLICY_PATHS,\n    _REFERENCE_ONLY_AUTHORITIES,\n)\n\n\ndef root() -> Path:\n    return Path(__file__).resolve().parents[1]\n\n\ndef test_proposal_context_keeps_repository_policy_reference_only() -> None:\n    documents = select_context_documents(\n        root(),\n        \"product_manager\",\n        [\"proposal_generation\", \"discovery\"],\n    )\n    rendered = render_context(\n        documents,\n        reference_only_authorities=_REFERENCE_ONLY_AUTHORITIES,\n        inline_paths=_INLINE_POLICY_PATHS,\n    )\n    payload = json.loads(rendered)\n    by_path = {entry[\"path\"]: entry for entry in payload}\n\n    assert by_path[\"AGENTS.md\"][\"reference_only\"] is True\n    assert \"content\" not in by_path[\"AGENTS.md\"]\n    assert \"content\" in by_path[\"docs/product/initial-scope.md\"]\n    assert \"content\" in by_path[\"docs/product/human-decisions.md\"]\n\n    full = render_context(documents)\n    assert len(rendered) < len(full) * 0.75\n\n\ndef test_completed_feature_history_is_bounded_and_scope_focused() -> None:\n    body = (\n        \"## Problem\\n\"\n        + \"x\" * 1000\n        + \"\\n## Desired outcome\\n\"\n        + \"y\" * 1000\n        + \"\\n## Scope in\\n- one\\n- two\\n## Scope out\\n- three\\n\"\n    )\n    summary = _completed_feature_context(12, \"Delivered feature\", body)\n\n    assert summary[\"number\"] == 12\n    assert summary[\"title\"] == \"Delivered feature\"\n    assert len(str(summary[\"problem\"])) <= 500\n    assert len(str(summary[\"desired_outcome\"])) <= 500\n    assert \"one\" in str(summary[\"scope_in\"])\n    assert \"Scope out\" not in str(summary[\"scope_in\"])\n\n\ndef _proposal(*, size: str = \"S\") -> dict[str, object]:\n    return {\n        \"size\": size,\n        \"decisions_required\": [\"Choose the onboarding persistence model.\"],\n    }\n\n\ndef _accepted_review(\n    *, suggested_size: str = \"S\", decisions: list[str] | None = None\n) -> dict[str, object]:\n    return {\n        \"verdict\": \"accepted\",\n        \"size_assessment\": {\n            \"status\": \"appropriate\",\n            \"suggested_size\": suggested_size,\n            \"reason\": \"One bounded outcome.\",\n        },\n        \"decisions_required\": (\n            [\"Choose the onboarding persistence model.\"] if decisions is None else decisions\n        ),\n        \"required_revisions\": [],\n    }\n\n\ndef test_accepted_ba_review_with_size_mismatch_becomes_revision_required() -> None:\n    normalized = ProposalWorkflow._apply_ba_acceptance_policy(\n        _proposal(size=\"S\"),\n        _accepted_review(suggested_size=\"M\"),\n    )\n    assert normalized[\"verdict\"] == \"revision_required\"\n    assert normalized[\"required_revisions\"]\n\n\ndef test_ba_review_cannot_drop_human_decisions() -> None:\n    normalized = ProposalWorkflow._apply_ba_acceptance_policy(\n        _proposal(),\n        _accepted_review(decisions=[]),\n    )\n    assert normalized[\"decisions_required\"] == [\n        \"Choose the onboarding persistence model.\"\n    ]\n\n\ndef test_matching_accepted_ba_review_stays_accepted() -> None:\n    normalized = ProposalWorkflow._apply_ba_acceptance_policy(\n        _proposal(),\n        _accepted_review(),\n    )\n    assert normalized[\"verdict\"] == \"accepted\"\n''')
+          PY
+      - name: Remove temporary workflow before validation
+        run: rm .github/workflows/apply-proposal-quality-fix.yml
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.lock
+      - name: Format changes
+        run: |
+          ruff check --fix scripts/orchestrator/context.py scripts/orchestrator/backlog.py scripts/orchestrator/proposal.py tests/test_proposal_quality.py
+          ruff format scripts/orchestrator/context.py scripts/orchestrator/backlog.py scripts/orchestrator/proposal.py tests/test_proposal_quality.py
+      - name: Validate
+        run: |
+          python scripts/validate_repository.py
+          ruff check .
+          ruff format --check .
+          mypy scripts tests
+          pytest
+      - name: Commit production changes
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/orchestrator/context.py scripts/orchestrator/backlog.py scripts/orchestrator/proposal.py tests/test_proposal_quality.py .github/workflows/apply-proposal-quality-fix.yml
+          git commit -m 'Improve autonomous proposal quality and context efficiency'
+          git push origin HEAD:fix/proposal-context-and-ba-quality
