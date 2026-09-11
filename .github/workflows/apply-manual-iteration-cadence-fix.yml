@@ -1,0 +1,89 @@
+name: Apply manual iteration cadence fix
+
+on:
+  push:
+    branches:
+      - fix/manual-iteration-bypass-cadence
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/manual-iteration-bypass-cadence
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply production change and regression test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('scripts/run_orchestrator.py')
+          text = runtime.read_text()
+          text = text.replace(
+              '    IterationBudget,\n    daily_report_due,',
+              '    IterationBudget,\n    PolicyDecision,\n    daily_report_due,',
+              1,
+          )
+          old = '''def _iteration() -> tuple[int, dict[str, object]]:\n    \"\"\"Run one GitHub-control and, when cadence permits, one bounded implementation pass.\"\"\"'''
+          new = '''def _schedule_for_trigger(\n    settings: RuntimePolicySettings,\n    runtime_state: RuntimeStateStore,\n    *,\n    now_utc: datetime,\n    manual_trigger: bool,\n) -> PolicyDecision:\n    \"\"\"Apply cadence only to continuous runtime iterations, never explicit human triggers.\"\"\"\n    return evaluate_schedule(\n        settings,\n        now_utc=now_utc,\n        last_iteration_started_at=(\n            None if manual_trigger else runtime_state.last_iteration_started_at()\n        ),\n        iterations_today=None,\n    )\n\n\ndef _iteration(*, manual_trigger: bool = False) -> tuple[int, dict[str, object]]:\n    \"\"\"Run one bounded orchestration pass; manual triggers bypass cadence only.\"\"\"'''
+          if old not in text:
+              raise SystemExit('Could not locate _iteration declaration')
+          text = text.replace(old, new, 1)
+          old_schedule = '''        schedule = evaluate_schedule(\n            settings,\n            now_utc=now_utc,\n            last_iteration_started_at=runtime_state.last_iteration_started_at(),\n            iterations_today=None,\n        )'''
+          new_schedule = '''        schedule = _schedule_for_trigger(\n            settings,\n            runtime_state,\n            now_utc=now_utc,\n            manual_trigger=manual_trigger,\n        )'''
+          if old_schedule not in text:
+              raise SystemExit('Could not locate schedule evaluation')
+          text = text.replace(old_schedule, new_schedule, 1)
+          old_call = '''        with orchestrator_process_lock(config.runtime.state_directory):\n            code, result = _iteration()'''
+          new_call = '''        with orchestrator_process_lock(config.runtime.state_directory):\n            code, result = _iteration(manual_trigger=True)'''
+          if old_call not in text:
+              raise SystemExit('Could not locate manual iteration call')
+          text = text.replace(old_call, new_call, 1)
+          runtime.write_text(text)
+
+          tests = Path('tests/test_runtime_policy.py')
+          text = tests.read_text()
+          import_anchor = 'import pytest\n\n'
+          if import_anchor not in text:
+              raise SystemExit('Could not locate test import anchor')
+          text = text.replace(
+              import_anchor,
+              import_anchor + 'from scripts.run_orchestrator import _schedule_for_trigger\n',
+              1,
+          )
+          anchor = '''def test_overnight_schedule_uses_faster_15_minute_interval() -> None:\n'''
+          test = '''def test_manual_trigger_bypasses_cadence_but_continuous_runtime_does_not(\n    tmp_path: Path,\n) -> None:\n    settings = load_runtime_policy_settings(root())\n    now = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)\n    state = RuntimeStateStore(tmp_path)\n    iteration_id = state.start_iteration(\"2026-08-31\", now - timedelta(minutes=1))\n    state.finish_iteration(\n        iteration_id,\n        status=\"success\",\n        reason=\"test\",\n        budget={},\n        completed_at=now - timedelta(seconds=30),\n    )\n\n    continuous = _schedule_for_trigger(\n        settings,\n        state,\n        now_utc=now,\n        manual_trigger=False,\n    )\n    manual = _schedule_for_trigger(\n        settings,\n        state,\n        now_utc=now,\n        manual_trigger=True,\n    )\n\n    assert continuous.allowed is False\n    assert continuous.reason == \"iteration_interval_not_elapsed\"\n    assert manual.allowed is True\n    assert manual.reason == \"schedule_available\"\n\n\n'''
+          if anchor not in text:
+              raise SystemExit('Could not locate test insertion anchor')
+          text = text.replace(anchor, test + anchor, 1)
+          tests.write_text(text)
+          PY
+      - name: Remove temporary workflow
+        run: rm .github/workflows/apply-manual-iteration-cadence-fix.yml
+      - name: Install validation dependencies
+        run: python -m pip install -r requirements-dev.lock
+      - name: Validate
+        run: |
+          python scripts/validate_repository.py
+          ruff check .
+          ruff format --check .
+          mypy scripts tests
+          pytest
+      - name: Commit production fix
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/run_orchestrator.py tests/test_runtime_policy.py .github/workflows/apply-manual-iteration-cadence-fix.yml
+          git commit -m 'Let manual iterations bypass cadence'
+          git push origin HEAD:fix/manual-iteration-bypass-cadence
