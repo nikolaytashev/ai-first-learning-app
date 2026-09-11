@@ -36,6 +36,7 @@ from scripts.orchestrator.runtime_config import (
 from scripts.orchestrator.runtime_policy import (
     BudgetedAgentRunner,
     IterationBudget,
+    PolicyDecision,
     daily_report_due,
     evaluate_schedule,
     evaluate_stop_conditions,
@@ -256,8 +257,26 @@ def _record_failed_iteration(
     )
 
 
-def _iteration() -> tuple[int, dict[str, object]]:
-    """Run one GitHub-control and, when cadence permits, one bounded implementation pass."""
+def _schedule_for_trigger(
+    settings: RuntimePolicySettings,
+    runtime_state: RuntimeStateStore,
+    *,
+    now_utc: datetime,
+    manual_trigger: bool,
+) -> PolicyDecision:
+    """Apply cadence only to continuous runtime iterations, never explicit human triggers."""
+    return evaluate_schedule(
+        settings,
+        now_utc=now_utc,
+        last_iteration_started_at=(
+            None if manual_trigger else runtime_state.last_iteration_started_at()
+        ),
+        iterations_today=None,
+    )
+
+
+def _iteration(*, manual_trigger: bool = False) -> tuple[int, dict[str, object]]:
+    """Run one bounded orchestration pass; manual triggers bypass cadence only."""
     runtime_state: RuntimeStateStore | None = None
     notifier: Notifier | None = None
     settings: RuntimePolicySettings | None = None
@@ -369,11 +388,11 @@ def _iteration() -> tuple[int, dict[str, object]]:
             repository_health=repository_health,
         )
 
-        schedule = evaluate_schedule(
+        schedule = _schedule_for_trigger(
             settings,
+            runtime_state,
             now_utc=now_utc,
-            last_iteration_started_at=runtime_state.last_iteration_started_at(),
-            iterations_today=None,
+            manual_trigger=manual_trigger,
         )
         implementation_result: dict[str, object]
         if not repository_stop.allowed:
@@ -495,7 +514,7 @@ def iteration() -> int:
     try:
         config = load_config(ROOT)
         with orchestrator_process_lock(config.runtime.state_directory):
-            code, result = _iteration()
+            code, result = _iteration(manual_trigger=True)
     except (RuntimeError, ValueError) as exc:
         _print({"status": "failed", "error": str(exc)})
         return 1
