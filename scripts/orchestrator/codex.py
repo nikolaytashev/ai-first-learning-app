@@ -8,6 +8,7 @@ import subprocess
 import time
 from collections.abc import Mapping
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Protocol, cast
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -21,6 +22,19 @@ _SECRET_NAMES = {
     "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_PRIVATE_KEY_PATH",
     "OPENAI_API_KEY",
+}
+
+_CODEX_OUTPUT_SCHEMA_KEYS = {
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "enum",
+    "anyOf",
+    "$defs",
+    "$ref",
+    "description",
 }
 
 
@@ -75,6 +89,95 @@ def _load_schema(path: Path) -> JsonObject:
     return cast(JsonObject, raw)
 
 
+def _project_codex_schema(value: Any) -> Any:
+    """Project full JSON Schema into the conservative Structured Outputs subset."""
+    if isinstance(value, list):
+        return [_project_codex_schema(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    projected: dict[str, Any] = {}
+    for key, item in value.items():
+        if key == "const":
+            projected["enum"] = [item]
+            continue
+        if key == "oneOf":
+            if isinstance(item, list):
+                projected["anyOf"] = [_project_codex_schema(entry) for entry in item]
+            continue
+        if key not in _CODEX_OUTPUT_SCHEMA_KEYS:
+            continue
+        if key in {"properties", "$defs"} and isinstance(item, dict):
+            projected[key] = {
+                str(name): _project_codex_schema(child) for name, child in item.items()
+            }
+        elif key in {"items", "anyOf"}:
+            projected[key] = _project_codex_schema(item)
+        elif key != "additionalProperties":
+            projected[key] = item
+
+    properties = projected.get("properties")
+    schema_type = projected.get("type")
+    object_type = schema_type == "object" or (
+        isinstance(schema_type, list) and "object" in schema_type
+    )
+    if object_type or isinstance(properties, dict):
+        projected["additionalProperties"] = False
+        if isinstance(properties, dict):
+            projected["required"] = list(properties)
+    return projected
+
+
+def codex_output_schema(schema: JsonObject) -> JsonObject:
+    """Return a Codex-compatible projection while preserving the full local contract."""
+    projected = _project_codex_schema(schema)
+    if not isinstance(projected, dict):
+        raise ValueError("Codex output schema projection must be a JSON object")
+    return cast(JsonObject, projected)
+
+
+def _codex_failure_detail(
+    stdout: str,
+    stderr: str,
+    environment: Mapping[str, str],
+) -> str:
+    """Extract useful JSONL error events plus stderr from a failed Codex process."""
+    details: list[str] = []
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            event = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        event_type = event.get("type")
+        if event_type == "error":
+            message = event.get("message")
+            if message is not None:
+                details.append(str(message))
+        elif event_type == "turn.failed":
+            error = event.get("error")
+            if isinstance(error, dict) and error.get("message") is not None:
+                details.append(str(error["message"]))
+            elif error is not None:
+                details.append(str(error))
+        elif event_type == "item.completed":
+            item = event.get("item")
+            if isinstance(item, dict) and item.get("type") == "error":
+                message = item.get("message")
+                if message is not None:
+                    details.append(str(message))
+
+    if stderr.strip():
+        details.append(stderr.strip())
+    if not details and stdout.strip():
+        details.append(stdout.strip())
+    return _redact(" | ".join(details), environment)[-2000:]
+
+
 def validate_output(output: JsonObject, schema_path: Path) -> None:
     """Validate an agent response against the repository contract."""
     validator = Draft202012Validator(_load_schema(schema_path), format_checker=FormatChecker())
@@ -108,43 +211,55 @@ class CodexCliRunner:
         timeout_seconds: int,
     ) -> CodexRun:
         """Execute one Codex turn and parse its JSONL event stream."""
-        command = [
-            self._executable,
-            "exec",
-            "--json",
-            "--ephemeral",
-            "--sandbox",
-            self._sandbox,
-            "--cd",
-            str(self._root),
-            "--model",
-            model.model,
-            "--config",
-            f'model_reasoning_effort="{model.reasoning_effort}"',
-            "--config",
-            f'web_search="{self._web_search}"',
-            "--output-schema",
-            str(schema_path),
-            "-",
-        ]
+        source_schema = _load_schema(schema_path)
+        projected_schema = codex_output_schema(source_schema)
         started = time.monotonic()
         try:
-            completed = subprocess.run(
-                command,
-                input=prompt,
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=timeout_seconds,
-                cwd=self._root,
-                env=sanitized_agent_environment(self._environment),
-            )
+            with TemporaryDirectory(prefix="codex-output-schema-") as temporary_directory:
+                codex_schema_path = Path(temporary_directory) / schema_path.name
+                codex_schema_path.write_text(
+                    json.dumps(projected_schema, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                command = [
+                    self._executable,
+                    "exec",
+                    "--json",
+                    "--ephemeral",
+                    "--sandbox",
+                    self._sandbox,
+                    "--cd",
+                    str(self._root),
+                    "--model",
+                    model.model,
+                    "--config",
+                    f'model_reasoning_effort="{model.reasoning_effort}"',
+                    "--config",
+                    f'web_search="{self._web_search}"',
+                    "--output-schema",
+                    str(codex_schema_path),
+                    "-",
+                ]
+                completed = subprocess.run(
+                    command,
+                    input=prompt,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=timeout_seconds,
+                    cwd=self._root,
+                    env=sanitized_agent_environment(self._environment),
+                )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError("Codex role run exceeded its elapsed-time budget") from exc
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
         if completed.returncode != 0:
-            detail = _redact(completed.stderr.strip(), self._environment)[-1000:]
+            detail = _codex_failure_detail(
+                completed.stdout,
+                completed.stderr,
+                self._environment,
+            )
             suffix = f": {detail}" if detail else ""
             raise RuntimeError(f"Codex CLI failed with exit code {completed.returncode}{suffix}")
 
