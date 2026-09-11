@@ -18,6 +18,7 @@ from scripts.orchestrator.runtime_policy import (
     schedule_interval_minutes,
 )
 from scripts.orchestrator.runtime_state import RuntimeStateStore
+from scripts.run_orchestrator import _schedule_for_trigger
 
 
 def root() -> Path:
@@ -57,6 +58,40 @@ def test_daytime_schedule_uses_default_30_minute_interval() -> None:
         iterations_today=100,
     )
     assert allowed.allowed is True
+
+
+def test_manual_trigger_bypasses_cadence_but_continuous_runtime_does_not(
+    tmp_path: Path,
+) -> None:
+    settings = load_runtime_policy_settings(root())
+    now = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
+    state = RuntimeStateStore(tmp_path)
+    iteration_id = state.start_iteration("2026-08-31", now - timedelta(minutes=1))
+    state.finish_iteration(
+        iteration_id,
+        status="success",
+        reason="test",
+        budget={},
+        completed_at=now - timedelta(seconds=30),
+    )
+
+    continuous = _schedule_for_trigger(
+        settings,
+        state,
+        now_utc=now,
+        manual_trigger=False,
+    )
+    manual = _schedule_for_trigger(
+        settings,
+        state,
+        now_utc=now,
+        manual_trigger=True,
+    )
+
+    assert continuous.allowed is False
+    assert continuous.reason == "iteration_interval_not_elapsed"
+    assert manual.allowed is True
+    assert manual.reason == "schedule_available"
 
 
 def test_overnight_schedule_uses_faster_15_minute_interval() -> None:
