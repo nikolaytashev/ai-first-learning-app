@@ -1,0 +1,40 @@
+name: Repair Codex fix workflow
+
+on:
+  push:
+    branches:
+      - fix/codex-structured-output-compatibility
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/codex-structured-output-compatibility
+      - name: Repair schema-node traversal in generated test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/apply-codex-structured-output-fix.yml')
+          text = path.read_text()
+          old = '''    for child in value.values():\\n        _assert_codex_subset(child)\\n'''
+          new = '''    if isinstance(properties, dict):\\n        for child in properties.values():\\n            _assert_codex_subset(child)\\n    definitions = value.get(\"$defs\")\\n    if isinstance(definitions, dict):\\n        for child in definitions.values():\\n            _assert_codex_subset(child)\\n    items = value.get(\"items\")\\n    if items is not None:\\n        _assert_codex_subset(items)\\n    variants = value.get(\"anyOf\")\\n    if isinstance(variants, list):\\n        for child in variants:\\n            _assert_codex_subset(child)\\n'''
+          if old not in text:
+              raise SystemExit('test walker anchor not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Remove repair workflow
+        run: rm .github/workflows/repair-codex-fix-workflow.yml
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/apply-codex-structured-output-fix.yml .github/workflows/repair-codex-fix-workflow.yml
+          git commit -m 'Fix Codex schema projection test traversal'
+          git push origin HEAD:fix/codex-structured-output-compatibility
