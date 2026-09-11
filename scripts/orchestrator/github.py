@@ -50,6 +50,41 @@ def _same_instant(left: object, right: object) -> bool:
     return left_time == right_time
 
 
+def _project_name_key(value: str) -> str:
+    """Normalize Project field/option names using GitHub's case-insensitive semantics."""
+    return value.strip().casefold()
+
+
+def _field_by_name(fields: dict[str, ProjectField], name: str) -> ProjectField | None:
+    """Resolve a field without creating a casing/edge-whitespace duplicate."""
+    exact = fields.get(name)
+    if exact is not None:
+        return exact
+    key = _project_name_key(name)
+    matches = [
+        field for existing_name, field in fields.items() if _project_name_key(existing_name) == key
+    ]
+    if len(matches) > 1:
+        raise RuntimeError(f"GitHub Project has ambiguous fields matching {name!r}")
+    return matches[0] if matches else None
+
+
+def _option_id_by_name(field: ProjectField, name: str) -> str | None:
+    """Resolve a single-select option without duplicating a case variant."""
+    exact = field.options.get(name)
+    if exact is not None:
+        return exact
+    key = _project_name_key(name)
+    matches = [
+        option_id
+        for option_name, option_id in field.options.items()
+        if _project_name_key(option_name) == key
+    ]
+    if len(matches) > 1:
+        raise RuntimeError(f"GitHub Project field has ambiguous options matching {name!r}")
+    return matches[0] if matches else None
+
+
 @dataclass(frozen=True)
 class ProjectField:
     """Resolved GitHub Project V2 field and option identifiers."""
@@ -342,7 +377,7 @@ class GitHubClient:
         if configured_url and project.url.rstrip("/") != configured_url.rstrip("/"):
             errors.append("configured GitHub Project URL does not match project number")
         for name, raw_contract in self._config.project.required_fields.items():
-            field = project.fields.get(name)
+            field = _field_by_name(project.fields, name)
             if field is None:
                 errors.append(f"GitHub Project is missing required field {name!r}")
                 continue
@@ -365,7 +400,7 @@ class GitHubClient:
                 )
             options = raw_contract.get("options")
             if isinstance(options, list):
-                missing = [item for item in options if item not in field.options]
+                missing = [item for item in options if _option_id_by_name(field, item) is None]
                 if missing:
                     errors.append(f"Project field {name!r} is missing options: {missing}")
         return errors
@@ -446,7 +481,7 @@ class GitHubClient:
                     raise RuntimeError(f"invalid Project options contract for {name!r}")
                 contract_options = cast(list[str], raw_options)
 
-            field = project.fields.get(name)
+            field = _field_by_name(project.fields, name)
             if field is None:
                 input_value: JsonObject = {
                     "projectId": project.project_id,
@@ -474,14 +509,16 @@ class GitHubClient:
             if expected_type != "SINGLE_SELECT" or not contract_options:
                 continue
 
-            missing = [option for option in contract_options if option not in field.options]
+            missing = [
+                option for option in contract_options if _option_id_by_name(field, option) is None
+            ]
             if not missing:
                 continue
             existing = self._single_select_option_inputs(field.field_id)
-            by_name = {cast(str, option["name"]): option for option in existing}
+            by_name = {_project_name_key(cast(str, option["name"])): option for option in existing}
             merged: list[JsonObject] = []
             for option_name in contract_options:
-                current = by_name.pop(option_name, None)
+                current = by_name.pop(_project_name_key(option_name), None)
                 merged.append(
                     current
                     if current is not None
@@ -847,12 +884,12 @@ class GitHubClient:
         }
         """
         for name, value in values.items():
-            field = project.fields.get(name)
+            field = _field_by_name(project.fields, name)
             if field is None:
                 raise RuntimeError(f"required Project field {name!r} was not resolved")
             field_value: JsonObject
             if field.data_type == "SINGLE_SELECT":
-                option_id = field.options.get(str(value))
+                option_id = _option_id_by_name(field, str(value))
                 if option_id is None:
                     raise RuntimeError(f"Project field {name!r} has no option {value!r}")
                 field_value = {"singleSelectOptionId": option_id}

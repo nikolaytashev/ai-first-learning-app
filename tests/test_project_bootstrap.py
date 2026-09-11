@@ -101,3 +101,39 @@ def test_bootstrap_refuses_existing_type_mismatch() -> None:
 
     with pytest.raises(RuntimeError, match="bootstrap will not replace"):
         client.reconcile_project_contract()
+
+
+def test_bootstrap_matches_existing_field_and_options_case_insensitively() -> None:
+    config = load_config(ROOT, environment={})
+    complete = _complete_snapshot(config)
+    fields = dict(complete.fields)
+    approval = fields.pop("Product Approval")
+    fields["product approval"] = approval
+    status_options = dict(complete.fields["Status"].options)
+    ready_id = status_options.pop("Ready")
+    status_options["ready"] = ready_id
+    fields["Status"] = ProjectField(
+        field_id=complete.fields["Status"].field_id,
+        data_type="SINGLE_SELECT",
+        options=status_options,
+    )
+    before = ProjectSnapshot(complete.project_id, complete.url, fields)
+    client = FakeProjectClient(config, before, complete)
+
+    result = client.reconcile_project_contract()
+
+    assert "Product Approval" not in result["created_fields"]
+    assert "Status" not in result["added_options"]
+    assert not any("createProjectV2Field" in query for query, _ in client.calls)
+
+
+def test_project_verification_accepts_case_variant_names() -> None:
+    config = load_config(ROOT, environment={})
+    complete = _complete_snapshot(config)
+    fields = dict(complete.fields)
+    approval = fields.pop("Product Approval")
+    fields[" PRODUCT APPROVAL "] = approval
+    project = ProjectSnapshot(complete.project_id, complete.url, fields)
+    client = FakeProjectClient(config, project, project)
+
+    assert client.verify_project(project) == []
