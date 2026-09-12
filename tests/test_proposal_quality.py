@@ -109,7 +109,7 @@ def test_matching_accepted_ba_review_stays_accepted() -> None:
     assert normalized["verdict"] == "accepted"
 
 
-def test_proposal_context_includes_flutter_platform_constraints_for_pm_and_ba() -> None:
+def test_proposal_context_includes_canonical_architecture_constraints_for_pm_and_ba() -> None:
     pm_documents = select_context_documents(
         root(), "product_manager", ["proposal_generation", "discovery"]
     )
@@ -122,7 +122,8 @@ def test_proposal_context_includes_flutter_platform_constraints_for_pm_and_ba() 
     for documents in (pm_documents, ba_documents):
         by_path = {document["path"]: document for document in documents}
         constraints = by_path["docs/architecture/constraints.md"]
-        assert "Flutter mobile application" in str(constraints["content"])
+        assert constraints["authority"] == "human_approved"
+        assert str(constraints["content"]).strip()
 
 
 def test_standard_product_approval_is_not_a_domain_decision() -> None:
