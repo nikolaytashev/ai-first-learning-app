@@ -771,7 +771,10 @@ class GitHubClient:
         if after_database_id is not None:
             payload["after_id"] = after_database_id
         else:
-            payload["after_id"] = None
+            siblings = self.list_sub_issues(parent_issue_number)
+            if not siblings or siblings[0].id == child_database_id:
+                return
+            payload["before_id"] = siblings[0].id
         self._rest(
             "PATCH",
             f"/repos/{repo}/issues/{parent_issue_number}/sub_issues/priority",
