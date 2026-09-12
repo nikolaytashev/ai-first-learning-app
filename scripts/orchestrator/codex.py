@@ -53,6 +53,23 @@ class AgentRunner(Protocol):
         ...
 
 
+class CodexInvocationError(RuntimeError):
+    """Codex failure carrying any telemetry observed before the failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        usage: Usage | None,
+        elapsed_ms: int,
+        thread_id: str | None,
+    ) -> None:
+        super().__init__(message)
+        self.usage = usage
+        self.elapsed_ms = elapsed_ms
+        self.thread_id = thread_id
+
+
 def sanitized_agent_environment(environment: Mapping[str, str] | None = None) -> dict[str, str]:
     """Remove control-plane and provider secrets before starting an agent process."""
     source = os.environ if environment is None else environment
@@ -178,6 +195,42 @@ def _codex_failure_detail(
     return _redact(" | ".join(details), environment)[-2000:]
 
 
+def _jsonl_telemetry(stdout: str) -> tuple[Usage | None, str | None]:
+    """Recover thread and completed-turn usage from a JSONL stream when present."""
+    usage: Usage | None = None
+    thread_id: str | None = None
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "thread.started" and isinstance(event.get("thread_id"), str):
+            thread_id = cast(str, event["thread_id"])
+        if event.get("type") != "turn.completed":
+            continue
+        raw = event.get("usage")
+        if not isinstance(raw, dict):
+            continue
+        input_tokens = raw.get("input_tokens")
+        output_tokens = raw.get("output_tokens")
+        if (
+            isinstance(input_tokens, int)
+            and not isinstance(input_tokens, bool)
+            and input_tokens >= 0
+            and isinstance(output_tokens, int)
+            and not isinstance(output_tokens, bool)
+            and output_tokens >= 0
+        ):
+            usage = Usage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=input_tokens + output_tokens,
+            )
+    return usage, thread_id
+
+
 def validate_output(output: JsonObject, schema_path: Path) -> None:
     """Validate an agent response against the repository contract."""
     validator = Draft202012Validator(_load_schema(schema_path), format_checker=FormatChecker())
@@ -251,7 +304,20 @@ class CodexCliRunner:
                     env=sanitized_agent_environment(self._environment),
                 )
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("Codex role run exceeded its elapsed-time budget") from exc
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            raw_stdout = exc.stdout or ""
+            stdout = (
+                raw_stdout.decode("utf-8", errors="replace")
+                if isinstance(raw_stdout, bytes)
+                else raw_stdout
+            )
+            timeout_usage, timeout_thread_id = _jsonl_telemetry(stdout)
+            raise CodexInvocationError(
+                "Codex role run exceeded its elapsed-time budget",
+                usage=timeout_usage,
+                elapsed_ms=elapsed_ms,
+                thread_id=timeout_thread_id,
+            ) from exc
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
         if completed.returncode != 0:
@@ -261,7 +327,13 @@ class CodexCliRunner:
                 self._environment,
             )
             suffix = f": {detail}" if detail else ""
-            raise RuntimeError(f"Codex CLI failed with exit code {completed.returncode}{suffix}")
+            failure_usage, failure_thread_id = _jsonl_telemetry(completed.stdout)
+            raise CodexInvocationError(
+                f"Codex CLI failed with exit code {completed.returncode}{suffix}",
+                usage=failure_usage,
+                elapsed_ms=elapsed_ms,
+                thread_id=failure_thread_id,
+            )
 
         output: JsonObject | None = None
         thread_id: str | None = None
@@ -325,19 +397,42 @@ class CodexCliRunner:
                 fatal_error = str(event.get("message", "Codex event stream failed"))
 
         if fatal_error is not None:
-            raise RuntimeError(_redact(fatal_error, self._environment)[-1000:])
+            raise CodexInvocationError(
+                _redact(fatal_error, self._environment)[-1000:],
+                usage=usage,
+                elapsed_ms=elapsed_ms,
+                thread_id=thread_id,
+            )
         if not turn_completed:
-            raise RuntimeError("Codex CLI exited without a turn.completed event")
+            raise CodexInvocationError(
+                "Codex CLI exited without a turn.completed event",
+                usage=usage,
+                elapsed_ms=elapsed_ms,
+                thread_id=thread_id,
+            )
         if output is None:
-            raise RuntimeError("Codex CLI completed without a structured agent message")
+            raise CodexInvocationError(
+                "Codex CLI completed without a structured agent message",
+                usage=usage,
+                elapsed_ms=elapsed_ms,
+                thread_id=thread_id,
+            )
         if usage is None:
-            raise RuntimeError("Codex CLI completed without measured token usage")
+            raise CodexInvocationError(
+                "Codex CLI completed without measured token usage",
+                usage=None,
+                elapsed_ms=elapsed_ms,
+                thread_id=thread_id,
+            )
 
         try:
             validate_output(output, schema_path)
         except ValidationError as exc:
-            raise RuntimeError(
-                f"Codex structured output failed schema validation: {exc.message}"
+            raise CodexInvocationError(
+                f"Codex structured output failed schema validation: {exc.message}",
+                usage=usage,
+                elapsed_ms=elapsed_ms,
+                thread_id=thread_id,
             ) from exc
 
         return CodexRun(output=output, usage=usage, elapsed_ms=elapsed_ms, thread_id=thread_id)

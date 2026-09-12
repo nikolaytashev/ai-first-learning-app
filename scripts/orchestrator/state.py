@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from scripts.orchestrator.model import CodexRun, JsonObject, ModelSelection
+from scripts.orchestrator.model import CodexRun, JsonObject, ModelSelection, Usage
 
 
 @dataclass(frozen=True)
@@ -73,6 +73,8 @@ class StateStore:
                     total_tokens INTEGER NOT NULL,
                     elapsed_ms INTEGER NOT NULL,
                     output_json TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'success',
+                    error TEXT,
                     PRIMARY KEY (workflow_id, role, attempt)
                 );
                 CREATE TABLE IF NOT EXISTS side_effects (
@@ -85,6 +87,15 @@ class StateStore:
                 );
                 """
             )
+            columns = {
+                str(row["name"]) for row in connection.execute("PRAGMA table_info(role_runs)")
+            }
+            if "status" not in columns:
+                connection.execute(
+                    "ALTER TABLE role_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'success'"
+                )
+            if "error" not in columns:
+                connection.execute("ALTER TABLE role_runs ADD COLUMN error TEXT")
 
     def create_workflow(self, workflow_id: str, proposal_id: str) -> None:
         """Persist workflow identity before the first nondeterministic role run."""
@@ -168,6 +179,57 @@ class StateStore:
                     run.elapsed_ms,
                     workflow_id,
                 ),
+            )
+
+    def record_role_failure(
+        self,
+        *,
+        workflow_id: str,
+        role: str,
+        attempt: int,
+        model: ModelSelection,
+        usage: Usage | None,
+        elapsed_ms: int,
+        error: str,
+    ) -> None:
+        """Persist a failed provider attempt and any measurable token usage."""
+        input_tokens = 0 if usage is None else usage.input_tokens
+        output_tokens = 0 if usage is None else usage.output_tokens
+        total_tokens = 0 if usage is None else usage.total_tokens
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO role_runs (
+                    workflow_id, role, attempt, profile, model, reasoning_effort,
+                    input_tokens, output_tokens, total_tokens, elapsed_ms, output_json,
+                    status, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', 'failed', ?)
+                """,
+                (
+                    workflow_id,
+                    role,
+                    attempt,
+                    model.profile,
+                    model.model,
+                    model.reasoning_effort,
+                    input_tokens,
+                    output_tokens,
+                    total_tokens,
+                    elapsed_ms,
+                    error[-2000:],
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE workflows
+                SET input_tokens = input_tokens + ?,
+                    output_tokens = output_tokens + ?,
+                    total_tokens = total_tokens + ?,
+                    elapsed_ms = elapsed_ms + ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE workflow_id = ?
+                """,
+                (input_tokens, output_tokens, total_tokens, elapsed_ms, workflow_id),
             )
 
     def save_proposal(self, workflow_id: str, proposal: JsonObject) -> None:

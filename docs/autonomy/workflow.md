@@ -7,6 +7,47 @@ as the durable control plane. It is a deterministic state machine around non-det
 runs: agents propose schema-valid analysis/plans/results; only the orchestrator may mutate workflow
 state or execute privileged GitHub/Git actions.
 
+## Generic orchestrator boundary
+
+The orchestrator core is a reusable project-automation engine, not part of the product that it
+orchestrates. This is a non-negotiable architecture constraint. The same core must be usable by a
+different repository, product domain, technology stack, or delivery target without changing core
+code. Project onboarding may supply different configuration and context, but must not require a fork
+or project-specific condition in the orchestrator.
+
+The core MUST NOT hardcode:
+
+- product or company names, business-domain terminology, user journeys, or feature semantics;
+- client types, platforms, frameworks, languages, databases, protocols, cloud providers, or testing
+  technologies as assumptions about the project being built;
+- project-specific paths, commands, validation rules, architecture decisions, or acceptance
+  criteria, except for generic configuration contracts that tell the core where such data lives;
+- special-case branches such as `if this project uses X` or literal checks for a project's chosen
+  technology.
+
+Project-specific knowledge belongs outside the core and is supplied as data through repository-owned
+configuration and authoritative context, including the context index, mission/product/architecture
+documents, validation configuration, repository policy, and configured extensions or capabilities.
+The orchestrator may understand generic concepts such as roles, capabilities, work hierarchy,
+dependencies, approvals, budgets, retries, authority levels, validation commands, provider adapters,
+and context selection. It must apply project constraints generically rather than encoding their
+contents.
+
+For example, when an acceptance criterion conflicts with a canonical architecture constraint, the
+Business Analysis flow should reject the conflict because authoritative context says so. The core
+must not know or test which concrete framework, client, storage engine, or verification technology
+that constraint names. Core regression tests should therefore use technology-neutral or synthetic
+fixtures wherever they exercise orchestration behavior.
+
+Specialized roles or capabilities that are not universally applicable must be registered through
+configuration or extension boundaries rather than embedded as project-domain logic in the generic
+engine. Future extraction of the orchestrator into a standalone autonomous-project platform must be
+possible without removing knowledge of the project that originally hosted it.
+
+Every orchestrator change must pass this portability question during review: **could the unchanged
+core run this behavior for an unrelated project whose domain and stack are completely different,
+with only project configuration/context replaced?** If not, the behavior belongs outside the core.
+
 ## Canonical work hierarchy
 
 ```text

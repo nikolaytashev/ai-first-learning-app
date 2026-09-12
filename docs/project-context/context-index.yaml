@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-07-24"
+last_updated: "2026-09-12"
 
 authority_levels:
   repository_policy: Binding operating rule; changes require human review.
@@ -132,8 +132,8 @@ documents:
     authority: human_approved
     version: "1.0"
     last_reviewed: "2026-07-23"
-    consumers: [architect, implementer, qa, reviewer]
-    task_types: [architecture, planning, implementation, review]
+    consumers: [product_manager, business_analysis, architect, implementer, qa, reviewer]
+    task_types: [proposal_generation, acceptance_criteria, architecture, planning, implementation, review]
 
   - path: docs/architecture/decisions/0001-autonomy-boundaries.md
     title: Autonomous-development authority boundaries
@@ -146,8 +146,8 @@ documents:
   - path: docs/autonomy/workflow.md
     title: Autonomous workflow
     authority: repository_policy
-    version: "1.0"
-    last_reviewed: "2026-07-23"
+    version: "1.1"
+    last_reviewed: "2026-09-12"
     consumers: [all_agents, orchestrator]
     task_types: [all]
 
