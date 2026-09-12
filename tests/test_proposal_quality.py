@@ -11,6 +11,7 @@ from scripts.orchestrator.proposal import (
     _INLINE_POLICY_PATHS,
     _REFERENCE_ONLY_AUTHORITIES,
     ProposalWorkflow,
+    _without_gate_only_decisions,
 )
 
 
@@ -106,3 +107,49 @@ def test_matching_accepted_ba_review_stays_accepted() -> None:
         _accepted_review(),
     )
     assert normalized["verdict"] == "accepted"
+
+
+def test_proposal_context_includes_flutter_platform_constraints_for_pm_and_ba() -> None:
+    pm_documents = select_context_documents(
+        root(), "product_manager", ["proposal_generation", "discovery"]
+    )
+    ba_documents = select_context_documents(
+        root(),
+        "business_analysis",
+        ["proposal_generation", "acceptance_criteria", "requirements"],
+    )
+
+    for documents in (pm_documents, ba_documents):
+        by_path = {document["path"]: document for document in documents}
+        constraints = by_path["docs/architecture/constraints.md"]
+        assert "Flutter mobile application" in str(constraints["content"])
+
+
+def test_standard_product_approval_is_not_a_domain_decision() -> None:
+    normalized = _without_gate_only_decisions(
+        {
+            "status": "needs_decision",
+            "decisions_required": [
+                "Human approval of product scope and priority for this proposal.",
+                "Approve or override the proposed P1 priority before implementation.",
+                "Choose the canonical lesson-content contract.",
+            ],
+        }
+    )
+
+    assert normalized["decisions_required"] == ["Choose the canonical lesson-content contract."]
+    assert normalized["status"] == "needs_decision"
+
+
+def test_gate_only_decisions_downgrade_needs_decision_to_proposed() -> None:
+    normalized = _without_gate_only_decisions(
+        {
+            "status": "needs_decision",
+            "decisions_required": [
+                "Human approval of product scope and priority for this proposal."
+            ],
+        }
+    )
+
+    assert normalized["decisions_required"] == []
+    assert normalized["status"] == "proposed"

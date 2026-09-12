@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any, cast
 
-from scripts.orchestrator.codex import _codex_failure_detail, codex_output_schema
-from scripts.orchestrator.model import JsonObject
+import pytest
+
+from scripts.orchestrator.codex import (
+    CodexCliRunner,
+    CodexInvocationError,
+    _codex_failure_detail,
+    codex_output_schema,
+)
+from scripts.orchestrator.model import JsonObject, ModelSelection
 from scripts.validate_repository import ROOT
 
 _FORBIDDEN_CODEX_KEYS = {
@@ -112,3 +120,45 @@ def test_failed_codex_jsonl_diagnostics_include_stdout_and_redact_secrets() -> N
     assert "request rejected" in detail
     assert "backend failed" in detail
     assert "token-secret" not in detail
+
+
+def test_nonzero_codex_exit_preserves_completed_turn_usage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(
+        json.dumps(
+            {
+                "type": "object",
+                "properties": {"ok": {"type": "boolean"}},
+                "required": ["ok"],
+                "additionalProperties": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    stdout = (
+        '{"type":"thread.started","thread_id":"thread-1"}\n'
+        '{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":3}}\n'
+        '{"type":"error","message":"provider rejected result"}\n'
+    )
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 1, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    runner = CodexCliRunner(root=tmp_path, environment={})
+    model = ModelSelection("balanced", "openai", "gpt-test", "medium")
+
+    with pytest.raises(CodexInvocationError) as captured:
+        runner.run(
+            prompt="test",
+            schema_path=schema_path,
+            model=model,
+            timeout_seconds=30,
+        )
+
+    assert captured.value.usage is not None
+    assert captured.value.usage.input_tokens == 12
+    assert captured.value.usage.output_tokens == 3
+    assert captured.value.thread_id == "thread-1"

@@ -132,8 +132,8 @@ documents:
     authority: human_approved
     version: "1.0"
     last_reviewed: "2026-07-23"
-    consumers: [architect, implementer, qa, reviewer]
-    task_types: [architecture, planning, implementation, review]
+    consumers: [product_manager, business_analysis, architect, implementer, qa, reviewer]
+    task_types: [proposal_generation, acceptance_criteria, architecture, planning, implementation, review]
 
   - path: docs/architecture/decisions/0001-autonomy-boundaries.md
     title: Autonomous-development authority boundaries
