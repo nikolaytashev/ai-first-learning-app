@@ -162,8 +162,8 @@ class RuntimeStateStore:
                 """
                 SELECT
                     COUNT(*) AS iterations,
-                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
-                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+                    COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0) AS successes,
+                    COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failures,
                     COALESCE(SUM(ai_requests), 0) AS ai_requests,
                     COALESCE(SUM(tasks), 0) AS tasks,
                     COALESCE(SUM(pull_requests), 0) AS pull_requests
