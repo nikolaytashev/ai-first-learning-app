@@ -75,6 +75,14 @@ Tasks are conflict-free enough for parallel execution.
 Project field `Origin` distinguishes `Human` from `Agent` work, while hidden issue metadata stores
 recoverable orchestration identity, parent/key, revision, approval digest and execution state.
 
+Human-owned unresolved gates surfaced by PM analysis are materialized as standalone managed
+`Decision` issues linked to the Epic/Feature through metadata. Decision issues are tracking and
+discussion artifacts, not hierarchy children and not Task dependency edges. The parent managed
+specification references the active Decision issue numbers. When a later parent analysis no longer
+reports a gate as unresolved, its Decision tracker is closed while preserving history. Resolution must
+still be recorded as authoritative human input or canonical repository context and followed by parent
+reconciliation; creating or closing a Decision issue does not itself authorize implementation.
+
 ## GitHub-only human control
 
 After the local worker starts, product assignments and workflow commands are issued in GitHub:

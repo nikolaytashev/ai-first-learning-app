@@ -114,6 +114,23 @@ def _is_command_only(body: str, prefix: str) -> bool:
     return bool(meaningful) and all(line.startswith(prefix) for line in meaningful)
 
 
+def _decision_key(decision: str) -> str:
+    """Return a stable orchestration key for one unresolved human decision."""
+    normalized = " ".join(decision.casefold().split())
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+    return f"decision-{digest}"
+
+
+def _decision_title(decision: str) -> str:
+    """Render a bounded GitHub title without project-specific semantics."""
+    prefix = "[Decision]: "
+    compact = " ".join(decision.split())
+    max_text = 160 - len(prefix)
+    if len(compact) > max_text:
+        compact = compact[: max_text - 1].rstrip() + "…"
+    return prefix + compact
+
+
 class ControlPlaneWorkflow:
     """Reconcile human-owned GitHub intent into an auditable executable work graph."""
 
@@ -505,7 +522,8 @@ Canonical repository context:
                 self._pause_children(issue.number)
         elif classification == "non_material" and metadata.get("approval") == "approved":
             metadata["approval_digest"] = digest
-        spec = self._render_analysis(analysis)
+        decision_refs = self._sync_decision_issues(issue, metadata, analysis)
+        spec = self._render_analysis(analysis, decision_refs)
         updated_body = _replace_metadata(_replace_spec(issue.body, spec), metadata)
         issue = self._github.update_issue(
             issue.number, title=cast(str, analysis["title"]), body=updated_body
@@ -923,7 +941,10 @@ Canonical repository context:
         return _replace_metadata(_replace_spec(body, spec), metadata)
 
     @staticmethod
-    def _render_analysis(analysis: Mapping[str, Any]) -> str:
+    def _render_analysis(
+        analysis: Mapping[str, Any],
+        decision_refs: list[tuple[str, IssueSnapshot]] | None = None,
+    ) -> str:
         scope = analysis.get("scope")
         in_scope = scope.get("in", []) if isinstance(scope, dict) else []
         out_scope = scope.get("out", []) if isinstance(scope, dict) else []
@@ -937,7 +958,14 @@ Canonical repository context:
                         f"  Verification: {criterion.get('verification')}"
                     )
         decisions = analysis.get("decisions_required")
-        decision_lines = [f"- {item}" for item in decisions] if isinstance(decisions, list) else []
+        if decision_refs is not None:
+            decision_lines = [
+                f"- #{issue.number} — {decision}" for decision, issue in decision_refs
+            ]
+        else:
+            decision_lines = (
+                [f"- {item}" for item in decisions] if isinstance(decisions, list) else []
+            )
         return "\n".join(
             [
                 "## Managed product specification",
@@ -966,6 +994,163 @@ Canonical repository context:
             ]
         )
 
+    def _linked_decision_issues(self, parent_number: int) -> list[tuple[IssueSnapshot, JsonObject]]:
+        """Return open managed Decision issues linked to one parent work item."""
+        result: list[tuple[IssueSnapshot, JsonObject]] = []
+        for candidate in self._github.list_issues(state="open"):
+            candidate_meta = parse_metadata(candidate.body)
+            if (
+                candidate_meta is not None
+                and candidate_meta.get("managed") is True
+                and candidate_meta.get("type") == "Decision"
+                and candidate_meta.get("parent") == parent_number
+            ):
+                result.append((candidate, candidate_meta))
+        return result
+
+    def _sync_decision_issues(
+        self,
+        parent: IssueSnapshot,
+        metadata: JsonObject,
+        analysis: Mapping[str, Any],
+    ) -> list[tuple[str, IssueSnapshot]]:
+        """Materialize PM decision gates as durable standalone GitHub issues."""
+        raw_decisions = analysis.get("decisions_required")
+        desired = (
+            [str(item).strip() for item in raw_decisions if str(item).strip()]
+            if isinstance(raw_decisions, list)
+            else []
+        )
+        existing = self._linked_decision_issues(parent.number)
+        existing_by_key = {
+            str(item_meta.get("key")): (item, item_meta)
+            for item, item_meta in existing
+            if isinstance(item_meta.get("key"), str)
+        }
+        single_reuse = len(desired) == 1 and len(existing) == 1
+        used_numbers: set[int] = set()
+        resolved: list[tuple[str, IssueSnapshot]] = []
+        priority = analysis.get("priority")
+        project_priority = str(priority) if isinstance(priority, str) else "P1"
+
+        for decision in desired:
+            key = _decision_key(decision)
+            match = existing_by_key.get(key)
+            if match is None and single_reuse:
+                match = existing[0]
+
+            if match is None:
+                decision_meta = self._new_metadata(
+                    "Decision", "Agent", parent=parent.number, key=key
+                )
+                decision_meta["decision_text"] = decision
+                decision_meta["execution_state"] = "waiting_human"
+                body = self._decision_body("", decision_meta, parent, decision)
+                ref = self._github.create_issue(_decision_title(decision), body)
+                current = self._github.get_issue(ref.number)
+            else:
+                current, decision_meta = match
+                decision_meta["key"] = key
+                decision_meta["decision_text"] = decision
+                decision_meta["execution_state"] = "waiting_human"
+                decision_meta["paused"] = False
+                body = self._decision_body(current.body, decision_meta, parent, decision)
+                title = (
+                    current.title
+                    if decision_meta.get("origin") == "Human"
+                    else _decision_title(decision)
+                )
+                current = self._github.update_issue(
+                    current.number,
+                    title=title,
+                    body=body,
+                )
+
+            used_numbers.add(current.number)
+            origin = decision_meta.get("origin")
+            self._ensure_project_fields(
+                current,
+                artifact_type="Decision",
+                origin=str(origin) if isinstance(origin, str) else "Agent",
+                status="Awaiting Human",
+                approval="Pending",
+                priority=project_priority,
+                size="XS",
+                role="Human",
+                automation="Waiting",
+            )
+            resolved.append((decision, current))
+
+        for stale, stale_meta in existing:
+            if stale.number in used_numbers:
+                continue
+            self._complete_decision_issue(
+                stale,
+                stale_meta,
+                parent_revision=int(metadata.get("revision", 0)),
+            )
+
+        metadata["decision_issue_numbers"] = [issue.number for _, issue in resolved]
+        return resolved
+
+    def _decision_body(
+        self,
+        body: str,
+        metadata: JsonObject,
+        parent: IssueSnapshot,
+        decision: str,
+    ) -> str:
+        spec = "\n".join(
+            [
+                "## Managed decision tracking",
+                "### Decision required",
+                decision,
+                "",
+                f"Parent work item: #{parent.number}",
+                "",
+                "### Resolution workflow",
+                (
+                    "Record the human decision in canonical repository context or as an "
+                    "allow-listed human comment on the parent work item, then run "
+                    f"`/orch replan` on #{parent.number}."
+                ),
+                "",
+                (
+                    "This tracking issue is not a Task dependency and does not authorize "
+                    "implementation."
+                ),
+            ]
+        )
+        return _replace_metadata(_replace_spec(body, spec), metadata)
+
+    def _complete_decision_issue(
+        self,
+        issue: IssueSnapshot,
+        metadata: JsonObject,
+        *,
+        parent_revision: int,
+    ) -> None:
+        """Close a Decision tracker once its parent no longer reports the gate."""
+        if issue.state == "closed":
+            return
+        metadata["approval"] = "approved"
+        metadata["paused"] = False
+        metadata["execution_state"] = "completed"
+        updated = self._github.update_issue(
+            issue.number,
+            body=_replace_metadata(issue.body, metadata),
+            state="closed",
+            state_reason="completed",
+        )
+        self._set_project_status(updated, "Done", "Approved", "Human", "Completed")
+        self._audit(
+            issue.number,
+            (
+                "Decision tracker completed because parent analysis revision "
+                f"{parent_revision} no longer reports this gate as unresolved."
+            ),
+        )
+
     def _pause_children(self, parent_number: int) -> None:
         for child in self._github.list_sub_issues(parent_number):
             child_meta = parse_metadata(child.body)
@@ -981,6 +1166,12 @@ Canonical repository context:
             self._set_project_status(child, "Blocked", "Pending", "Human", "Waiting")
 
     def _cancel_tree(self, issue: IssueSnapshot, metadata: JsonObject, reason: str) -> None:
+        for decision, decision_meta in self._linked_decision_issues(issue.number):
+            self._cancel_issue(
+                decision,
+                decision_meta,
+                f"Parent #{issue.number} cancelled: {reason}",
+            )
         for child in self._github.list_sub_issues(issue.number):
             child_meta = parse_metadata(child.body)
             if child_meta is None:

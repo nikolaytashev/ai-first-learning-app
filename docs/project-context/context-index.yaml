@@ -146,8 +146,8 @@ documents:
   - path: docs/autonomy/workflow.md
     title: Autonomous workflow
     authority: repository_policy
-    version: "1.1"
-    last_reviewed: "2026-09-12"
+    version: "1.2"
+    last_reviewed: "2026-09-15"
     consumers: [all_agents, orchestrator]
     task_types: [all]
 
