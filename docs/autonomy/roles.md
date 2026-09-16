@@ -25,6 +25,9 @@ only the context required for its task and returns schema-valid output.
 - Product ambiguity returns through the Business Analyst to the Human Owner.
 - Architecture ambiguity returns to the Software Architect, then to the Human
   Owner when the decision is human-owned.
+- Decision-discussion questions are first classified with a light routing pass, then answered by the
+  lowest-sufficient responsible role. Cross-functional questions may consult other relevant roles,
+  but one primary role synthesizes the answer and no advisory answer acquires decision authority.
 - The orchestrator, not an agent, selects the model profile and executes
   privileged GitHub, Git and validation actions.
 
