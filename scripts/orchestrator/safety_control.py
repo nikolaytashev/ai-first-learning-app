@@ -157,6 +157,10 @@ class HardenedControlPlaneWorkflow(ControlPlaneWorkflow):
                     continue
                 commands.append(command)
 
+        if artifact_type == "Decision":
+            # Decision issues have no safety-preprocessed commands; keep their read-only base path.
+            return super()._process(managed)
+
         if artifact_type == "Task":
             self._apply_task_commands(issue, metadata, commands)
             self._advance_comment_cursor(issue.number, metadata, comments)
