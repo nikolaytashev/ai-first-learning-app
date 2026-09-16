@@ -4,7 +4,17 @@ import pytest
 
 from scripts.orchestrator.commands import parse_commands, validate_command
 
-ACCEPTED = ("analyze", "replan", "approve", "pause", "resume", "cancel", "priority", "rework")
+ACCEPTED = (
+    "analyze",
+    "replan",
+    "approve",
+    "pause",
+    "resume",
+    "cancel",
+    "priority",
+    "rework",
+    "ask",
+)
 
 
 def test_parses_only_namespaced_command_lines() -> None:
@@ -43,6 +53,30 @@ def test_validates_scope_and_required_arguments() -> None:
     validate_command(command, artifact_type="Task")
     with pytest.raises(ValueError, match="only on Task"):
         validate_command(command, artifact_type="Feature")
+
+
+def test_ask_is_decision_only_and_may_include_question_text() -> None:
+    command = parse_commands(
+        "/orch ask What trade-offs should I consider?",
+        prefix="/orch",
+        accepted=ACCEPTED,
+        comment_id=7,
+        actor="nikolaytashev",
+    )[0]
+    validate_command(command, artifact_type="Decision")
+    assert command.argument == "What trade-offs should I consider?"
+    with pytest.raises(ValueError, match="only on Decision"):
+        validate_command(command, artifact_type="Feature")
+
+    other = parse_commands(
+        "/orch pause",
+        prefix="/orch",
+        accepted=ACCEPTED,
+        comment_id=8,
+        actor="nikolaytashev",
+    )[0]
+    with pytest.raises(ValueError, match="accept only /orch ask"):
+        validate_command(other, artifact_type="Decision")
 
 
 def test_priority_is_restricted_to_project_options() -> None:

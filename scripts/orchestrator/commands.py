@@ -54,6 +54,10 @@ def validate_command(command: OrchestratorCommand, *, artifact_type: str) -> Non
         raise ValueError("/orch priority requires exactly one of P0, P1, P2, P3")
     if command.name in {"cancel", "rework"} and not command.argument:
         raise ValueError(f"/orch {command.name} requires a reason")
+    if command.name == "ask" and artifact_type != "Decision":
+        raise ValueError("/orch ask is valid only on Decision issues")
+    if artifact_type == "Decision" and command.name != "ask":
+        raise ValueError("Decision issues accept only /orch ask")
     if command.name == "rework" and artifact_type != "Task":
         raise ValueError("/orch rework is valid only on Task issues")
     if command.name in {"analyze", "replan", "approve"} and artifact_type not in {

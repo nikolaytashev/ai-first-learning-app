@@ -60,6 +60,7 @@ authorization:
     - cancel
     - priority
     - rework
+    - ask
 
 branch_policy:
   protected_branches:

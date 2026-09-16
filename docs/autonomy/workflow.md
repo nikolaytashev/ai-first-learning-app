@@ -83,6 +83,14 @@ reports a gate as unresolved, its Decision tracker is closed while preserving hi
 still be recorded as authoritative human input or canonical repository context and followed by parent
 reconciliation; creating or closing a Decision issue does not itself authorize implementation.
 
+Decision discussion is read-only. An allow-listed human may use `/orch ask` on a managed Decision
+issue, with question text in the same comment, as the command argument, or in the immediately
+preceding unprocessed discussion comment. A lightweight classifier routes the question to the
+lowest-sufficient primary role among Product Manager, Business Analysis, Software Architect and
+Instructional Designer, with up to two specialist consultations when the question crosses role
+boundaries. The primary role posts one synthesized answer. Discussion answers never resolve the
+Decision, approve parent work, change scope, create Tasks or authorize implementation.
+
 ## GitHub-only human control
 
 After the local worker starts, product assignments and workflow commands are issued in GitHub:
@@ -90,7 +98,8 @@ After the local worker starts, product assignments and workflow commands are iss
 - create an `[Epic]` or `[Feature]` issue using the repository Issue Forms;
 - discuss/change requirements in comments on the canonical issue;
 - use `/orch analyze`, `/orch replan`, `/orch approve`, `/orch pause`, `/orch resume`,
-  `/orch cancel <reason>`, `/orch priority P0..P3`, and task-only `/orch rework <reason>`;
+  `/orch cancel <reason>`, `/orch priority P0..P3`, task-only `/orch rework <reason>`, and
+  Decision-only `/orch ask [question]`;
 - review and merge draft PRs manually.
 
 Only allow-listed human comments have product authority. Agent/bot comments are evidence/audit, not

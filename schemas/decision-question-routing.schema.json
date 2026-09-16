@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/decision-question-routing.schema.json",
+  "title": "Decision Question Routing",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "question_comment_id", "primary_role", "consult_roles", "question_type", "confidence", "rationale"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "question_comment_id": {"type": "integer", "minimum": 1},
+    "primary_role": {"enum": ["product_manager", "business_analysis", "software_architect", "instructional_designer"]},
+    "consult_roles": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"enum": ["product_manager", "business_analysis", "software_architect", "instructional_designer"]}
+    },
+    "question_type": {"enum": ["product", "requirements", "architecture", "learning_design", "cross_functional"]},
+    "confidence": {"enum": ["low", "medium", "high"]},
+    "rationale": {"type": "string", "minLength": 1}
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nikolaytashev/ai-first-learning-app/schemas/decision-question-answer.schema.json",
+  "title": "Decision Question Answer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "question_comment_id", "role", "answer", "caveats"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "question_comment_id": {"type": "integer", "minimum": 1},
+    "role": {"enum": ["product_manager", "business_analysis", "software_architect", "instructional_designer"]},
+    "answer": {"type": "string", "minLength": 1, "maxLength": 12000},
+    "caveats": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

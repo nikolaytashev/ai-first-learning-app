@@ -16,6 +16,10 @@ from scripts.orchestrator.codex import AgentRunner
 from scripts.orchestrator.commands import OrchestratorCommand, parse_commands, validate_command
 from scripts.orchestrator.config import select_model
 from scripts.orchestrator.context import render_context, select_context_documents
+from scripts.orchestrator.decision_discussion import (
+    has_pending_decision_command,
+    process_decision_questions,
+)
 from scripts.orchestrator.github import GitHubClient, ProjectSnapshot
 from scripts.orchestrator.model import IssueComment, IssueSnapshot, JsonObject, OrchestratorConfig
 from scripts.orchestrator.runtime_config import ControlPlaneSettings
@@ -177,8 +181,16 @@ class ControlPlaneWorkflow:
                 if (
                     isinstance(artifact_type, str)
                     and isinstance(origin, str)
-                    and artifact_type in {"Epic", "Feature", "Task"}
+                    and artifact_type in {"Epic", "Feature", "Task", "Decision"}
                 ):
+                    if artifact_type == "Decision":
+                        comments = self._new_human_comments(issue.number, metadata)
+                        if not has_pending_decision_command(
+                            comments,
+                            command_prefix=self._config.authorization.command_prefix,
+                            accepted_commands=self._config.authorization.accepted_commands,
+                        ):
+                            continue
                     result.append(ManagedIssue(issue, artifact_type, origin, metadata))
                 continue
             if issue.author not in humans:
@@ -266,6 +278,24 @@ class ControlPlaneWorkflow:
             for command in parsed:
                 validate_command(command, artifact_type=artifact_type)
             commands.extend(parsed)
+
+        if artifact_type == "Decision":
+            ask_commands = [command for command in commands if command.name == "ask"]
+            if ask_commands:
+                process_decision_questions(
+                    root=self._root,
+                    application_root=self._application_root,
+                    github=self._github,
+                    issue=issue,
+                    metadata=metadata,
+                    new_comments=comments,
+                    commands=ask_commands,
+                    human_approvers=self._config.authorization.human_approvers,
+                    command_prefix=self._config.authorization.command_prefix,
+                    run_role=self._run_role,
+                )
+                self._advance_comment_cursor(issue.number, metadata, comments)
+            return False, len(commands)
 
         if artifact_type == "Task":
             self._apply_task_commands(issue, metadata, commands)
@@ -1107,6 +1137,14 @@ Canonical repository context:
                 decision,
                 "",
                 f"Parent work item: #{parent.number}",
+                "",
+                "### Discussion",
+                (
+                    "Ask advisory questions in this issue with `/orch ask`. Put the question in "
+                    "the same comment, pass it after the command, or put `/orch ask` in the next "
+                    "comment after an unprocessed question. The orchestrator routes the question "
+                    "to the responsible role; advisory answers do not resolve the decision."
+                ),
                 "",
                 "### Resolution workflow",
                 (
