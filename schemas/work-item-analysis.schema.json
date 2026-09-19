@@ -37,7 +37,22 @@
         }
       }
     },
-    "decisions_required": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 3}},
+    "decisions_required": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "statement"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^decision-[a-z0-9][a-z0-9-]{2,119}$"
+          },
+          "statement": {"type": "string", "minLength": 3}
+        }
+      }
+    },
     "priority": {"enum": ["P0", "P1", "P2", "P3"]},
     "size": {"enum": ["XS", "S", "M", "L"]},
     "cancellation_reason": {"type": ["string", "null"]},

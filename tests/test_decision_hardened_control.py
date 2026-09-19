@@ -14,6 +14,9 @@ def test_hardened_control_delegates_decisions_before_parent_analysis() -> None:
     decision_guard = source.index('if artifact_type == "Decision":')
     decision_delegate = source.index("return super()._process(managed)")
     task_guard = source.index('if artifact_type == "Task":')
-    parent_analysis = source.index("should_analyze =")
+    parent_delegate = source.index(
+        "return self._process_parent(issue, metadata, comments, commands)"
+    )
 
-    assert decision_guard < decision_delegate < task_guard < parent_analysis
+    assert decision_guard < decision_delegate < task_guard < parent_delegate
+    assert "_analyze(" not in source

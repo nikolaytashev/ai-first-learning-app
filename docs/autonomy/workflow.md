@@ -83,13 +83,23 @@ reports a gate as unresolved, its Decision tracker is closed while preserving hi
 still be recorded as authoritative human input or canonical repository context and followed by parent
 reconciliation; creating or closing a Decision issue does not itself authorize implementation.
 
-Decision discussion is read-only. An allow-listed human may use `/orch ask` on a managed Decision
-issue, with question text in the same comment, as the command argument, or in the immediately
-preceding unprocessed discussion comment. A lightweight classifier routes the question to the
-lowest-sufficient primary role among Product Manager, Business Analysis, Software Architect and
-Instructional Designer, with up to two specialist consultations when the question crosses role
-boundaries. The primary role posts one synthesized answer. Discussion answers never resolve the
-Decision, approve parent work, change scope, create Tasks or authorize implementation.
+Decision discussion is read-only until the human explicitly resolves it. An allow-listed human may
+use `/orch ask` on a managed Decision issue, with question text in the same comment, as the command
+argument, or in the immediately preceding unprocessed discussion comment. A lightweight classifier
+routes the question to the lowest-sufficient primary role among Product Manager, Business Analysis,
+Software Architect and Instructional Designer, with up to two specialist consultations when the
+question crosses role boundaries. The primary role posts one synthesized advisory answer.
+
+To resolve a Decision, the allow-listed human states the selected direction in the Decision issue and
+adds `/orch approve` in that comment (or immediately after an unprocessed decision comment). This
+records the resolution as authoritative human input and queues the parent Epic/Feature for PM/BA
+reconciliation. Decision approval does not approve the parent work item for implementation; parent
+approval remains a separate explicit human gate after the resolved decision has been incorporated.
+
+PM analysis assigns every unresolved human gate an explicit stable Decision key. Rewording the same
+gate must reuse that key; a substantively different choice, value, scope or architecture question must
+use a new key. Resolution suppression is identity-based only: the runtime does not use fuzzy text
+similarity to infer that two Decision gates are the same.
 
 ## GitHub-only human control
 
@@ -99,7 +109,7 @@ After the local worker starts, product assignments and workflow commands are iss
 - discuss/change requirements in comments on the canonical issue;
 - use `/orch analyze`, `/orch replan`, `/orch approve`, `/orch pause`, `/orch resume`,
   `/orch cancel <reason>`, `/orch priority P0..P3`, task-only `/orch rework <reason>`, and
-  Decision-only `/orch ask [question]`;
+  Decision-only `/orch ask [question]` / `/orch approve`;
 - review and merge draft PRs manually.
 
 Only allow-listed human comments have product authority. Agent/bot comments are evidence/audit, not
@@ -135,9 +145,11 @@ Pending/ready work may be reorganized. In-progress work may be marked stale and 
 publication. Completed/merged history is never rewritten; future desired state uses compensating
 Tasks when old behaviour must be removed.
 
-`/orch approve` approves the current managed revision. On a Feature, bounded child Tasks inherit
-that exact approval digest and can become `Ready` when dependencies are satisfied. Epic approval
-does not automatically approve child Features.
+`/orch approve` on an Epic/Feature approves the current managed revision. On a Feature, bounded
+child Tasks inherit that exact approval digest and can become `Ready` when dependencies are
+satisfied. Epic approval does not automatically approve child Features. On a Decision,
+`/orch approve` finalizes only the stated decision and queues parent reconciliation; it never
+authorizes implementation by itself.
 
 ## Task implementation workflow
 

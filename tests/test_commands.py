@@ -68,14 +68,23 @@ def test_ask_is_decision_only_and_may_include_question_text() -> None:
     with pytest.raises(ValueError, match="only on Decision"):
         validate_command(command, artifact_type="Feature")
 
-    other = parse_commands(
-        "/orch pause",
+    approve = parse_commands(
+        "/orch approve",
         prefix="/orch",
         accepted=ACCEPTED,
         comment_id=8,
         actor="nikolaytashev",
     )[0]
-    with pytest.raises(ValueError, match="accept only /orch ask"):
+    validate_command(approve, artifact_type="Decision")
+
+    other = parse_commands(
+        "/orch pause",
+        prefix="/orch",
+        accepted=ACCEPTED,
+        comment_id=9,
+        actor="nikolaytashev",
+    )[0]
+    with pytest.raises(ValueError, match="accept only /orch ask or /orch approve"):
         validate_command(other, artifact_type="Decision")
 
 
