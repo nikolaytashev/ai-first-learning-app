@@ -13,7 +13,6 @@ from scripts.orchestrator.commands import OrchestratorCommand, parse_commands, v
 from scripts.orchestrator.control_plane import (
     ControlPlaneWorkflow,
     ManagedIssue,
-    _is_command_only,
     parse_metadata,
 )
 from scripts.orchestrator.github import GitHubClient
@@ -166,41 +165,7 @@ class HardenedControlPlaneWorkflow(ControlPlaneWorkflow):
             self._advance_comment_cursor(issue.number, metadata, comments)
             return False, len(commands)
 
-        deterministic = [
-            command
-            for command in commands
-            if command.name in {"pause", "resume", "cancel", "priority"}
-        ]
-        for command in deterministic:
-            issue, metadata = self._apply_parent_command(issue, metadata, command)
-
-        if any(command.name == "approve" for command in commands):
-            issue, metadata = self._approve(issue, metadata)
-
-        force_analysis = any(command.name in {"analyze", "replan"} for command in commands)
-        agent_replan_requests = metadata.get("agent_replan_requests")
-        has_agent_replan = isinstance(agent_replan_requests, list) and bool(agent_replan_requests)
-        force_replan = any(command.name == "replan" for command in commands) or has_agent_replan
-        normal_feedback = any(
-            not _is_command_only(comment.body, self._config.authorization.command_prefix)
-            for comment in comments
-        )
-        initial = int(metadata.get("revision", 0)) == 0
-        should_analyze = metadata.get("paused") is not True and (
-            initial
-            or force_analysis
-            or has_agent_replan
-            or (self._settings.auto_reconcile_human_comments and normal_feedback)
-        )
-        reconciled = False
-        if should_analyze and metadata.get("approval") != "cancelled":
-            issue, metadata, analysis = self._analyze(issue, metadata, comments)
-            if force_replan or initial or normal_feedback:
-                issue, metadata = self._reconcile(issue, metadata, analysis, comments)
-                reconciled = True
-
-        self._advance_comment_cursor(issue.number, metadata, comments)
-        return reconciled, len(commands)
+        return self._process_parent(issue, metadata, comments, commands)
 
 
 def run_safety_control(

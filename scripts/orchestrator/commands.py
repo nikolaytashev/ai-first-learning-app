@@ -56,14 +56,13 @@ def validate_command(command: OrchestratorCommand, *, artifact_type: str) -> Non
         raise ValueError(f"/orch {command.name} requires a reason")
     if command.name == "ask" and artifact_type != "Decision":
         raise ValueError("/orch ask is valid only on Decision issues")
-    if artifact_type == "Decision" and command.name != "ask":
-        raise ValueError("Decision issues accept only /orch ask")
+    if artifact_type == "Decision" and command.name not in {"ask", "approve"}:
+        raise ValueError("Decision issues accept only /orch ask or /orch approve")
     if command.name == "rework" and artifact_type != "Task":
         raise ValueError("/orch rework is valid only on Task issues")
-    if command.name in {"analyze", "replan", "approve"} and artifact_type not in {
-        "Epic",
-        "Feature",
-    }:
+    if command.name in {"analyze", "replan"} and artifact_type not in {"Epic", "Feature"}:
         raise ValueError(f"/orch {command.name} is valid only on Epic or Feature issues")
+    if command.name == "approve" and artifact_type not in {"Epic", "Feature", "Decision"}:
+        raise ValueError("/orch approve is valid only on Epic, Feature, or Decision issues")
     if command.name in {"pause", "resume", "approve", "analyze", "replan"} and command.argument:
         raise ValueError(f"/orch {command.name} does not accept an argument")

@@ -1,5 +1,5 @@
 schema_version: 1
-last_updated: "2026-09-16"
+last_updated: "2026-09-20"
 
 authority_levels:
   repository_policy: Binding operating rule; changes require human review.
@@ -146,8 +146,8 @@ documents:
   - path: docs/autonomy/workflow.md
     title: Autonomous workflow
     authority: repository_policy
-    version: "1.3"
-    last_reviewed: "2026-09-16"
+    version: "1.4"
+    last_reviewed: "2026-09-20"
     consumers: [all_agents, orchestrator]
     task_types: [all]
 

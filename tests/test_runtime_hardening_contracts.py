@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 
 from scripts import run_orchestrator
+from scripts.orchestrator.control_plane import ControlPlaneWorkflow
 from scripts.orchestrator.safety_control import HardenedControlPlaneWorkflow
 
 
@@ -41,3 +42,22 @@ def test_iteration_and_continuous_run_hold_process_lock() -> None:
 
     assert "orchestrator_process_lock(" in iteration_source
     assert "orchestrator_process_lock(" in run_source
+
+
+def test_hardened_parent_processing_uses_shared_reconciliation_path() -> None:
+    hardened_source = inspect.getsource(HardenedControlPlaneWorkflow._process)
+    parent_source = inspect.getsource(ControlPlaneWorkflow._process_parent)
+
+    assert "return self._process_parent(issue, metadata, comments, commands)" in hardened_source
+    assert "_analyze(" not in hardened_source
+    assert "pending_decision_resolutions" in parent_source
+
+
+def test_resolved_decisions_are_normalized_before_digest_and_count() -> None:
+    source = inspect.getsource(ControlPlaneWorkflow._analyze)
+
+    normalization = source.index('analysis["decisions_required"] = self._active_decisions')
+    digest = source.index("digest = _approval_digest(analysis)")
+    count = source.index('metadata["decisions_required_count"]')
+
+    assert normalization < digest < count
